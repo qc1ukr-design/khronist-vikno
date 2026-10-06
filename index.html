@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-C6Jge9iFQplec1wk+o9afiapQ5KC1wQROVyEs+IEY9o='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Погодити задачі</title>
+<!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
+     Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
+     бот отримує web_app_data у її чаті. Нічого стороннього, крім скрипта Telegram; жодних мережевих запитів (connect-src
+     'none'). Дані на сторінку — лише через textContent (не innerHTML). -->
+<script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+<style>
+:root{--f-bg:#fff;--f-text:#1c1c1e;--f-hint:#7c7c80;--f-card:#f1f1f5;--f-btn:#2481cc;--f-btn-text:#fff;--ok:#2e9d4f;--no:#d9453b;--warn:rgba(255,166,0,.22)}
+@media (prefers-color-scheme:dark){:root{--f-bg:#17212b;--f-text:#f2f2f2;--f-hint:#8b9aa7;--f-card:#232e3c;--f-btn:#5288c1;--f-btn-text:#fff}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text));font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+.wrap{max-width:640px;margin:0 auto;padding:12px 14px 0}
+h1{font-size:18px;margin:4px 0 2px;line-height:1.3}
+.sub{color:var(--tg-theme-hint-color,var(--f-hint));font-size:14px;margin:0 0 4px}
+.cnt{position:sticky;top:0;z-index:2;background:var(--tg-theme-bg-color,var(--f-bg));padding:8px 0;font-size:15px;font-weight:600;border-bottom:1px solid rgba(128,128,128,.18)}
+.card{background:var(--tg-theme-secondary-bg-color,var(--f-card));border-radius:14px;padding:12px;margin:10px 0;border:2px solid transparent}
+.card.yes{border-color:var(--ok)}
+.card.no{opacity:.62}
+.card.no .what{text-decoration:line-through}
+.row{display:flex;gap:10px;align-items:flex-start}
+.body{flex:1;min-width:0;cursor:pointer}
+.who{font-weight:600}
+.num{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400;margin-right:4px}
+.what{margin-top:2px;overflow-wrap:anywhere}
+.meta{color:var(--tg-theme-hint-color,var(--f-hint));font-size:14px;margin-top:4px;overflow-wrap:anywhere}
+.chip{display:inline-block;padding:1px 8px;border-radius:10px;font-size:13px;background:var(--warn);margin:6px 6px 0 0}
+.chip.info{background:rgba(36,129,204,.18)}
+.more{color:var(--tg-theme-link-color,var(--f-btn));font-size:14px;margin-top:6px}
+.acts{display:flex;flex-direction:column;gap:8px}
+.acts button{width:54px;height:50px;border-radius:12px;border:1px solid rgba(128,128,128,.3);background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text));font-size:22px;line-height:1;cursor:pointer}
+.acts .y.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.acts .n.on{background:var(--no);border-color:var(--no);color:#fff}
+.ed{display:none;margin-top:10px;border-top:1px solid rgba(128,128,128,.2);padding-top:4px}
+.card.open .ed{display:block}
+label{display:block;font-size:14px;color:var(--tg-theme-hint-color,var(--f-hint));margin:10px 0 4px}
+select,input[type=date],textarea{width:100%;font:inherit;font-size:16px;padding:10px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text))}
+textarea{min-height:66px;resize:vertical}
+.line{display:flex;gap:10px;align-items:center}
+.line input[type=date]{flex:1}
+.nodl{display:flex;gap:6px;align-items:center;font-size:15px;white-space:nowrap}
+.nodl input{width:22px;height:22px}
+.warn{color:var(--no);font-size:14px;margin-top:8px;display:none}
+.card.bad .warn{display:block}
+.note{font-size:13px;color:var(--tg-theme-hint-color,var(--f-hint));margin-top:3px}
+.note.day{color:inherit;background:var(--warn);padding:3px 8px;border-radius:8px;margin:6px 0 2px}
+.edacts{display:flex;gap:10px;margin-top:12px}
+.edacts button{flex:1;height:48px;border-radius:12px;border:none;font-size:16px;font-weight:600;color:#fff;cursor:pointer}
+.edacts .y{background:var(--ok)}
+.edacts .n{background:var(--no)}
+.gen{margin:16px 0 8px}
+footer{position:sticky;bottom:0;background:var(--tg-theme-bg-color,var(--f-bg));padding:10px 0 calc(12px + env(safe-area-inset-bottom));border-top:1px solid rgba(128,128,128,.18)}
+#send{width:100%;height:54px;border-radius:12px;border:none;background:var(--tg-theme-button-color,var(--f-btn));color:var(--tg-theme-button-text-color,var(--f-btn-text));font-size:17px;font-weight:600;cursor:pointer}
+#send:disabled{opacity:.45}
+#err{display:none;background:var(--warn);border-radius:12px;padding:12px;margin:10px 0}
+#out{display:none;white-space:pre-wrap;font-size:12px;background:var(--tg-theme-secondary-bg-color,var(--f-card));padding:10px;border-radius:10px}
+h2{font-size:16px;margin:18px 0 2px}
+h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
+.kv{display:grid;grid-template-columns:auto 1fr;column-gap:8px;row-gap:2px;margin-top:2px}
+.kv .k{color:var(--tg-theme-hint-color,var(--f-hint));font-size:14px;padding-top:1px}
+.kv .v{overflow-wrap:anywhere}
+.msg{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--tg-theme-bg-color,var(--f-bg));border-radius:10px;padding:8px 10px;margin-top:6px;font-size:15px;line-height:1.35;border:1px solid rgba(128,128,128,.22)}
+.lnk{display:inline-block;color:var(--tg-theme-link-color,var(--f-btn));font-size:14px;margin:8px 14px 0 0;cursor:pointer;background:none;border:none;padding:0;font:inherit;font-size:14px}
+.org{display:none;white-space:pre-wrap;font-size:14px;margin-top:6px;padding:8px 10px;border-left:3px solid var(--tg-theme-link-color,var(--f-btn));overflow-wrap:anywhere}
+.card.org-on .org{display:block}
+.info{background:var(--tg-theme-secondary-bg-color,var(--f-card));border-radius:12px;padding:10px 12px;margin:8px 0;font-size:15px;opacity:.85}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">Погодити задачі</h1>
+  <p class="sub" id="part"></p>
+  <div class="cnt" id="cnt"></div>
+  <div id="err"></div>
+  <main>
+    <section id="b-people"><h2>Людям <span class="hn" id="n-people"></span></h2><div id="list"></div></section>
+    <section id="b-own"><h2>Ваші задачі <span class="hn" id="n-own"></span></h2><div id="list-own"></div></section>
+    <section id="b-info"><h2>Не задачі — лише для повноти <span class="hn" id="n-info"></span></h2><div id="list-info"></div></section>
+  </main>
+  <div class="gen" id="genbox">
+    <label for="gen">Зауваження до всього списку (Асистент запише до відома)</label>
+    <textarea id="gen" maxlength="500" placeholder="Необов'язково"></textarea>
+  </div>
+  <pre id="out"></pre>
+  <footer><button id="send" type="button" disabled>Готово — надіслати</button></footer>
+</div>
+<script>
+(function () {
+  'use strict';
+  /*INFLATE{*/
+  // Сирий DEFLATE (RFC 1951) за зразком puff.c — без DecompressionStream: старі WebView його не мають.
+  var LB = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  var LE = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  var DB = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+  var DE = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+  var ORD = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+  function inflate(src, maxOut) {
+    var pos = 0, buf = 0, cnt = 0, out = [];
+    function bits(n) {
+      while (cnt < n) {
+        if (pos >= src.length) throw new Error('eof');
+        buf |= src[pos++] << cnt; cnt += 8;
+      }
+      var v = buf & ((1 << n) - 1);
+      buf >>>= n; cnt -= n;
+      return v;
+    }
+    function build(len, n) {
+      var count = new Array(16).fill(0), offs = new Array(16).fill(0), sym = new Array(n).fill(0), i;
+      for (i = 0; i < n; i++) count[len[i]]++;
+      count[0] = 0;
+      for (i = 1; i < 16; i++) offs[i] = offs[i - 1] + count[i - 1];
+      for (i = 0; i < n; i++) if (len[i]) sym[offs[len[i]]++] = i;
+      return {count: count, sym: sym};
+    }
+    function decode(h) {
+      var code = 0, first = 0, index = 0, l, c;
+      for (l = 1; l < 16; l++) {
+        code |= bits(1);
+        c = h.count[l];
+        if (code - c < first) return h.sym[index + (code - first)];
+        index += c; first += c; first <<= 1; code <<= 1;
+      }
+      throw new Error('code');
+    }
+    function put(b) {
+      if (out.length >= maxOut) throw new Error('big');
+      out.push(b);
+    }
+    function codes(lh, dh) {
+      for (;;) {
+        var s = decode(lh);
+        if (s < 256) { put(s); continue; }
+        if (s === 256) return;
+        s -= 257;
+        if (s >= 29) throw new Error('len');
+        var len = LB[s] + bits(LE[s]);
+        var ds = decode(dh);
+        if (ds >= 30) throw new Error('dist');
+        var dist = DB[ds] + bits(DE[ds]);
+        if (dist > out.length) throw new Error('far');
+        for (var k = 0; k < len; k++) put(out[out.length - dist]);
+      }
+    }
+    function fixed() {
+      var l = [], i;
+      for (i = 0; i < 144; i++) l.push(8);
+      for (; i < 256; i++) l.push(9);
+      for (; i < 280; i++) l.push(7);
+      for (; i < 288; i++) l.push(8);
+      var d = [];
+      for (i = 0; i < 30; i++) d.push(5);
+      return [build(l, 288), build(d, 30)];
+    }
+    function dynamic() {
+      var nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4, i;
+      if (nlen > 286 || ndist > 30) throw new Error('counts');
+      var cl = new Array(19).fill(0);
+      for (i = 0; i < ncode; i++) cl[ORD[i]] = bits(3);
+      var lc = build(cl, 19), all = new Array(nlen + ndist).fill(0), idx = 0;
+      while (idx < nlen + ndist) {
+        var s = decode(lc), rep, v = 0;
+        if (s < 16) { all[idx++] = s; continue; }
+        if (s === 16) { if (!idx) throw new Error('rep'); v = all[idx - 1]; rep = 3 + bits(2); }
+        else if (s === 17) rep = 3 + bits(3);
+        else rep = 11 + bits(7);
+        if (idx + rep > nlen + ndist) throw new Error('rep');
+        while (rep--) all[idx++] = v;
+      }
+      if (!all[256]) throw new Error('eob');
+      return [build(all.slice(0, nlen), nlen), build(all.slice(nlen), ndist)];
+    }
+    var last, type;
+    do {
+      last = bits(1); type = bits(2);
+      if (type === 0) {
+        buf = 0; cnt = 0;
+        if (pos + 4 > src.length) throw new Error('eof');
+        var ln = src[pos] | (src[pos + 1] << 8), nl = src[pos + 2] | (src[pos + 3] << 8);
+        pos += 4;
+        if (ln !== (~nl & 0xffff) || pos + ln > src.length) throw new Error('stored');
+        for (var j = 0; j < ln; j++) put(src[pos++]);
+      } else if (type === 1) { var f = fixed(); codes(f[0], f[1]); }
+      else if (type === 2) { var g = dynamic(); codes(g[0], g[1]); }
+      else throw new Error('type');
+    } while (!last);
+    return new Uint8Array(out);
+  }
+  /*}INFLATE*/
+
+  var TG = window.Telegram && window.Telegram.WebApp;
+  var IN_TG = !!(TG && TG.platform && TG.platform !== 'unknown');
+  var WD = ['нд', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+  var $ = function (id) { return document.getElementById(id); };
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function str(x, n) { return typeof x === 'string' ? x.slice(0, n) : ''; }
+  function isoOk(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
+  function dlabel(s) {
+    if (!isoOk(s)) return '';
+    var p = s.split('-'), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    return WD[d.getUTCDay()] + ' ' + p[2] + '.' + p[1];
+  }
+  function plusDays(s, n) {
+    var p = s.split('-'), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]) + n * 864e5);
+    return d.toISOString().slice(0, 10);
+  }
+  function hashParam(name) {
+    var h = (location.hash || '').replace(/^#/, '').split('&');
+    for (var i = 0; i < h.length; i++) {
+      var kv = h[i].split('=');
+      if (kv[0] === name && kv.length === 2) return kv[1];
+    }
+    return null;
+  }
+  function decodeData() {
+    var s = hashParam('d');
+    if (!s || !/^[A-Za-z0-9_-]{8,60000}$/.test(s)) throw new Error('nodata');
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s), u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    var json = new TextDecoder('utf-8', {fatal: true}).decode(inflate(u, 200000));
+    var P = JSON.parse(json);
+    if (!P || P.v !== 1 || typeof P.id !== 'string' || typeof P.s !== 'string' || !Array.isArray(P.it)) throw new Error('shape');
+    return P;
+  }
+  function fail(msg) {
+    var e = $('err');
+    e.textContent = msg;
+    e.style.display = 'block';
+  }
+
+  var P, items = [], team = Object.create(null), order = [], today = '', maxDay = '';
+  try {
+    P = decodeData();
+  } catch (e) {
+    $('title').textContent = 'Список не відкрився';
+    fail('Не вдалося прочитати список. Закрийте вікно й натисніть кнопку «📋 Погодити задачі» ще раз.');
+    ['genbox', 'b-people', 'b-own', 'b-info'].forEach(function (id) { $(id).style.display = 'none'; });
+    if (TG && TG.ready) TG.ready();
+    return;
+  }
+  // telegram-web-app.js кладе параметри фрагмента (і наш d) у sessionStorage — прибираємо d звідти: дані вікна — лише в
+  // пам'яті сторінки (рецензія безпеки DISP-18, М7).
+  try {
+    var SK = '__telegram__initParams', sp = JSON.parse(window.sessionStorage.getItem(SK) || 'null');
+    if (sp && sp.d) { delete sp.d; window.sessionStorage.setItem(SK, JSON.stringify(sp)); }
+  } catch (e) {}
+  today = isoOk(P.td) ? P.td : new Date().toISOString().slice(0, 10);
+  maxDay = plusDays(today, 366);
+  (Array.isArray(P.tm) ? P.tm : []).slice(0, 200).forEach(function (p) {
+    if (Array.isArray(p) && /^[a-z][a-z0-9_]{1,23}$/.test(p[0]) && typeof p[1] === 'string') {
+      team[p[0]] = str(p[1], 80); order.push(p[0]);
+    }
+  });
+  team.owner = 'Марго (собі)';
+  // DISP-17: «Кому: Асистент» — її задача, яку веде Асистент (нагадає їй у день строку). Є лише, коли рушій дав «as».
+  var ASST = typeof P.as === 'string' && P.as ? 'asst' : '';
+  if (ASST) team.asst = str(P.as, 60);
+  function mine(w) { return w === 'owner' || (ASST && w === ASST); }
+
+  P.it.slice(0, 60).forEach(function (r) {
+    if (!r || typeof r.n !== 'number' || r.n < 1 || r.n !== Math.floor(r.n)) return;
+    var w = str(r.w, 24), d = str(r.d, 10);
+    var it = {
+      n: r.n, w0: team[w] ? w : '', t0: str(r.t, 500), d0: (d === '-' || isoOk(d)) ? d : '',
+      why: str(r.y, 300), res: str(r.r, 300), hm: str(r.h, 5), f: str(r.f, 8), said: str(r.s, 80),
+      no: (typeof r.no === 'number' && r.no > 0) ? r.no : 0, o: str(r.o, 400), u: str(r.u, 300), x: str(r.x, 200),
+      cand: Array.isArray(r.c) ? r.c.filter(function (k) { return team[k]; }).slice(0, 5) : []
+    };
+    it.w = it.w0; it.t = it.t0; it.d = it.d0; it.z = ''; it.dec = null; it.own = mine(it.w0);
+    items.push(it);
+  });
+  var info = (Array.isArray(P.ti) ? P.ti : []).slice(0, 30).filter(function (x) {
+    return Array.isArray(x) && typeof x[0] === 'number' && typeof x[1] === 'string';
+  });
+
+  $('title').textContent = str(P.h, 140) || 'Погодити задачі';
+  $('part').textContent = P.p ? 'Частина: задачі ' + str(P.p, 30) : '';
+  if (!items.length) fail('У цьому списку нічого не чекає вашого рішення.');
+
+  // Т1 — рівно те, що отримає людина (t1_one рушія): шапка, «Що зробити», «Результат», «Навіщо», «Строк», «Терміново»,
+  // рядок про кнопку-посилання, підвал. Тест рушія звіряє цей формат.
+  var LINK_BUTTON = '(кнопка нижче)';
+  var T1_FOOT = 'Відповідайте сюди: «прийняла» або питання — текстом чи голосом.';
+  function endDot(s) { s = (s || '').replace(/\s+$/, ''); return /[.!?…]$/.test(s) ? s : s + '.'; }
+  function flat(s) { return (s || '').replace(/\s+/g, ' ').trim(); }
+  function taskText(it) {
+    var t = flat(it.t);
+    return it.z.trim() && it.dec === 1 ? endDot(t) + ' Зауваження Марго: ' + flat(it.z) : t;
+  }
+  function t1(it) {
+    var task = taskText(it);
+    var out = ['📌 Задача №' + (it.no || '…') + ' від Марго', 'Що зробити: ' + endDot(task)];
+    if (it.res) out.push('Результат: ' + endDot(it.res));
+    if (it.why) out.push('Навіщо: ' + endDot(it.why));
+    if (isoOk(it.d)) out.push('Строк: ' + dlabel(it.d) + (it.hm && it.d === it.d0 ? ', ' + it.hm : '') + '.');
+    else out.push(it.d === '-' ? 'Строк: без строку.' : 'Строк: ? (оберіть)');
+    if (it.f.indexOf('!') >= 0) out.push('Терміново.');
+    if (it.f.indexOf('l') >= 0 && task.indexOf(LINK_BUTTON) < 0) out.push('Посилання — кнопкою нижче.');
+    out.push(T1_FOOT);
+    return out.join('\n');
+  }
+
+  function complete(it) {
+    return !!it.w && (it.d === '-' || (isoOk(it.d) && it.d >= today)) && it.t.trim().length > 0;
+  }
+  function missing(it) {
+    var m = [];
+    if (!it.w) m.push('кому');
+    if (!(it.d === '-' || (isoOk(it.d) && it.d >= today))) m.push(isoOk(it.d) ? 'строк минув' : 'до коли');
+    if (!it.t.trim()) m.push('що зробити');
+    return m;
+  }
+  function changed(it) {
+    return it.w !== it.w0 || it.d !== it.d0 || it.t.trim() !== it.t0;
+  }
+  function haptic() {
+    try { if (TG && TG.HapticFeedback && TG.isVersionAtLeast && TG.isVersionAtLeast('6.1')) TG.HapticFeedback.selectionChanged(); } catch (e) {}
+  }
+
+  function render(it) {
+    var c = it.card || el('div', 'card');
+    it.card = c;
+    c.textContent = '';
+    c.className = 'card' + (it.dec === 1 ? ' yes' : it.dec === 0 ? ' no' : '') + (it.open ? ' open' : '') + (it.bad ? ' bad' : '');
+    if (it.orgOn) c.className += ' org-on';
+    var row = el('div', 'row'), body = el('div', 'body');
+    // Як рядок таблиці: Кому · Що зробити (рівно текст, який отримає людина) · Строк.
+    var kv = el('div', 'kv');
+    function pair(k, v) { kv.appendChild(el('div', 'k', k)); kv.appendChild(el('div', 'v', v)); }
+    pair(it.n + '.', it.w === 'owner' ? 'Ваша задача (у ваш список)' :
+         ASST && it.w === ASST ? 'Ваша задача — веде Асистент (нагадає вам у день строку)' : it.w ? 'Кому: ' + team[it.w] :
+         (it.said ? 'Кому: «' + it.said + '» — оберіть, хто це' : 'Кому: не названо — оберіть'));
+    pair('', 'Строк: ' + (it.d === '-' ? 'без строку' : isoOk(it.d) ? dlabel(it.d) + (it.hm && it.d === it.d0 ? ', ' + it.hm : '') : '?'));
+    body.appendChild(kv);
+    // DISP-19: строк зсунуто за «≤ 5 на день», понад ліміт чи графік доведення — фраза рушія, поки строк її не змінено.
+    if (it.x && it.d === it.d0) body.appendChild(el('div', 'note day', '📅 ' + it.x));
+    var msg = el('div', 'msg', mine(it.w) ? 'Що зробити: ' + endDot(taskText(it)) : t1(it));
+    msg.setAttribute('aria-label', mine(it.w) ? 'Ваша задача' : 'Текст, який отримає людина');
+    body.appendChild(msg);
+    if (it.u && it.t.trim() === it.t0) body.appendChild(el('div', 'note', '✏️ Текст уточнив за розмовою на нараді. У резюме було: «' + it.u + '»'));
+    var miss = missing(it);
+    if (miss.length) body.appendChild(el('span', 'chip', '❓ ' + miss.join(', ')));
+    if (it.f.indexOf('q') >= 0 && it.d === it.d0 && isoOk(it.d)) body.appendChild(el('span', 'chip', 'перевірте дату'));
+    if (it.f.indexOf('p') >= 0 && it.d === it.d0 && isoOk(it.d)) body.appendChild(el('span', 'chip info', 'строк запропонував асистент'));
+    if (changed(it)) body.appendChild(el('span', 'chip info', 'змінено'));
+    if (it.z) body.appendChild(el('span', 'chip info', 'є зауваження'));
+    var ln = el('div');
+    if (it.o) {
+      var ob = el('button', 'lnk', it.orgOn ? 'Звідки? ▴' : 'Звідки? ›');
+      ob.type = 'button';
+      ob.addEventListener('click', function (ev) { ev.stopPropagation(); it.orgOn = !it.orgOn; render(it); });
+      ln.appendChild(ob);
+    }
+    var eb = el('button', 'lnk', it.open ? 'Сховати правку ▴' : 'Змінити, зауваження ›');
+    eb.type = 'button';
+    eb.setAttribute('aria-expanded', it.open ? 'true' : 'false');
+    eb.addEventListener('click', function (ev) { ev.stopPropagation(); it.open = !it.open; render(it); });
+    ln.appendChild(eb);
+    body.appendChild(ln);
+    if (it.o) {
+      body.appendChild(el('div', 'org', it.o + (it.no ? '\nПовніше — напишіть у чаті: «№' + it.no + ' — звідки ця задача?»' : '')));
+    }
+    row.appendChild(body);
+    var acts = el('div', 'acts');
+    var y = el('button', 'y' + (it.dec === 1 ? ' on' : ''), '✓');
+    y.type = 'button';
+    y.setAttribute('aria-label', 'Погодити задачу ' + it.n);
+    y.addEventListener('click', function () { decide(it, it.dec === 1 ? null : 1); });
+    var n = el('button', 'n' + (it.dec === 0 ? ' on' : ''), '✗');
+    n.type = 'button';
+    n.setAttribute('aria-label', 'Не ставити задачу ' + it.n);
+    n.addEventListener('click', function () { decide(it, it.dec === 0 ? null : 0); });
+    acts.appendChild(y); acts.appendChild(n);
+    row.appendChild(acts);
+    c.appendChild(row);
+    c.appendChild(editor(it));
+    return c;
+  }
+
+  function editor(it) {
+    var ed = el('div', 'ed');
+    ed.appendChild(el('label', null, 'Кому'));
+    var sel = document.createElement('select');
+    sel.appendChild(new Option('— оберіть —', ''));
+    var keys = it.cand.concat(order.filter(function (k) { return it.cand.indexOf(k) < 0; }));
+    keys.forEach(function (k) { sel.appendChild(new Option(team[k], k)); });
+    sel.appendChild(new Option(team.owner, 'owner'));
+    if (ASST) sel.appendChild(new Option(team.asst, ASST));
+    sel.value = it.w;
+    sel.addEventListener('change', function () {
+      it.w = sel.value;
+      // Строк, який запропонував асистент, — лише для її власної (D208): людині — лише дата, яку обрала вона.
+      if (it.f.indexOf('p') >= 0 && !mine(it.w) && it.d === it.d0) { it.d = ''; dt.value = ''; }
+      else if (it.f.indexOf('p') >= 0 && mine(it.w) && !it.d) { it.d = it.d0; dt.value = it.d0; }   // знову її — мій строк
+      recheck(it);
+    });
+    ed.appendChild(sel);
+    if (it.said && !it.w0) ed.appendChild(el('div', 'note', 'На нараді / у диктовці: «' + it.said + '»'));
+
+    ed.appendChild(el('label', null, 'Строк'));
+    var line = el('div', 'line');
+    var dt = document.createElement('input');
+    dt.type = 'date'; dt.min = today; dt.max = maxDay;
+    if (isoOk(it.d)) dt.value = it.d;
+    var nl = el('label', 'nodl'), cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = it.d === '-';
+    dt.disabled = cb.checked;
+    nl.appendChild(cb); nl.appendChild(document.createTextNode('без строку'));
+    dt.addEventListener('change', function () { it.d = isoOk(dt.value) ? dt.value : ''; recheck(it); });
+    cb.addEventListener('change', function () {
+      dt.disabled = cb.checked;
+      it.d = cb.checked ? '-' : (isoOk(dt.value) ? dt.value : '');
+      recheck(it);
+    });
+    line.appendChild(dt); line.appendChild(nl);
+    ed.appendChild(line);
+
+    ed.appendChild(el('label', null, 'Що зробити'));
+    var ta = document.createElement('textarea');
+    ta.maxLength = Math.min(500, Math.max(300, it.t0.length)); ta.value = it.t;
+    ta.addEventListener('input', function () { it.t = ta.value; });
+    ta.addEventListener('change', function () { recheck(it); });
+    ed.appendChild(ta);
+
+    ed.appendChild(el('label', null, 'Зауваження'));
+    var zz = document.createElement('textarea');
+    zz.maxLength = 200; zz.value = it.z; zz.placeholder = 'Необов\'язково';
+    zz.addEventListener('input', function () { it.z = zz.value; count(); });
+    zz.addEventListener('change', function () { render(it); });
+    ed.appendChild(zz);
+    ed.appendChild(el('div', 'note', 'З ✓ — піде людині разом із задачею. З ✗ — Асистентові до відома, чому не ставите.'));
+
+    ed.appendChild(el('div', 'warn', 'Щоб поставити, оберіть: ' + missing(it).join(', ') + '.'));
+    var ea = el('div', 'edacts');
+    var y = el('button', 'y', '✓ Погодити'), n = el('button', 'n', '✗ Не ставити');
+    y.type = 'button'; n.type = 'button';
+    y.addEventListener('click', function () { decide(it, 1); });
+    n.addEventListener('click', function () { decide(it, 0); });
+    ea.appendChild(y); ea.appendChild(n);
+    ed.appendChild(ea);
+    return ed;
+  }
+
+  function recheck(it) {
+    if (it.dec === 1 && !complete(it)) it.dec = null;
+    if (complete(it)) it.bad = false;
+    render(it); count();
+  }
+
+  function decide(it, dec) {
+    if (dec === 1 && !complete(it)) {
+      it.bad = true; it.open = true; it.dec = null;
+    } else {
+      it.bad = false; it.dec = dec;
+      if (dec !== null) it.open = false;
+    }
+    haptic();
+    render(it); count();
+    if (it.bad) it.card.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+
+  function edits(it) {
+    var e = {}, any = false;
+    if (it.dec !== 0) {
+      if (it.w !== it.w0 && it.w) { e.w = it.w; any = true; }
+      if ((it.d !== it.d0 || (it.f.indexOf('p') >= 0 && !mine(it.w))) && (it.d === '-' || isoOk(it.d))) {
+        e.d = it.d; any = true;
+      }
+      if (it.t.trim() !== it.t0 && it.t.trim()) { e.t = it.t.trim(); any = true; }
+    }
+    if (it.z.trim()) { e.z = it.z.trim(); any = true; }
+    return any ? e : null;
+  }
+  function payload() {
+    var d = [];
+    items.forEach(function (it) {
+      var e = edits(it);
+      if (it.dec === 1 || it.dec === 0) d.push(e ? [it.n, it.dec, e] : [it.n, it.dec]);
+      else if (e) d.push([it.n, 2, e]);
+    });
+    var o = {v: 1, id: P.id, s: P.s, d: d}, r = $('gen').value.trim();
+    if (r) o.r = r;
+    return JSON.stringify(o);
+  }
+  function bytes(s) { return new TextEncoder().encode(s).length; }
+
+  function count() {
+    var y = 0, n = 0, w = 0;
+    items.forEach(function (it) { if (it.dec === 1) y++; else if (it.dec === 0) n++; else w++; });
+    $('cnt').textContent = '✓ ' + y + ' · ✗ ' + n + ' · без рішення ' + w;
+    var body = payload(), size = bytes(body), any = JSON.parse(body).d.length > 0 || !!$('gen').value.trim();
+    var btn = $('send');
+    btn.disabled = !any || size > 4096;
+    btn.textContent = size > 4096 ? 'Забагато тексту — скоротіть правки' : 'Готово — надіслати';
+    try {
+      if (TG && TG.isVersionAtLeast && TG.isVersionAtLeast('6.2')) {
+        if (any) TG.enableClosingConfirmation(); else TG.disableClosingConfirmation();
+      }
+    } catch (e) {}
+    return {y: y, n: n, w: w, body: body, size: size};
+  }
+
+  function send() {
+    var c = count();
+    if (c.size > 4096) return;
+    if (IN_TG && typeof TG.sendData === 'function') {
+      try { TG.disableClosingConfirmation(); } catch (e) {}
+      TG.sendData(c.body);
+      return;
+    }
+    var o = $('out');
+    o.style.display = 'block';
+    o.textContent = 'Поза Telegram — нічого не надіслано. Ось що пішло б боту (' + c.size + ' байт):\n' + c.body;
+  }
+
+  $('send').addEventListener('click', function () {
+    var c = count();
+    if (!c.w) return send();
+    var msg = (c.w === 1 ? '1 задача' : c.w + ' задач(і)') + ' без рішення — лишаться чекати. Надіслати?';
+    if (IN_TG && TG.showConfirm && TG.isVersionAtLeast && TG.isVersionAtLeast('6.2')) {
+      TG.showConfirm(msg, function (ok) { if (ok) send(); });
+    } else if (window.confirm(msg)) {
+      send();
+    }
+  });
+  $('gen').addEventListener('input', count);
+
+  // Блоки: людям; її власні (Марго 06.10 — теж на погодження, окремо); не задачі (обговорення, повтори) — довідка.
+  var people = items.filter(function (it) { return !it.own; }), own = items.filter(function (it) { return it.own; });
+  people.forEach(function (it) { $('list').appendChild(render(it)); });
+  own.forEach(function (it) { $('list-own').appendChild(render(it)); });
+  info.forEach(function (x) {
+    var b = el('div', 'info');
+    b.appendChild(el('div', null, x[0] + '. ' + str(x[1], 200)));
+    b.appendChild(el('div', 'note', str(x[2], 120)));
+    $('list-info').appendChild(b);
+  });
+  $('n-people').textContent = people.length ? '(' + people.length + ')' : '';
+  $('n-own').textContent = own.length ? '(' + own.length + ')' : '';
+  $('n-info').textContent = info.length ? '(' + info.length + ')' : '';
+  if (!people.length) $('b-people').style.display = 'none';
+  if (!own.length) $('b-own').style.display = 'none';
+  if (!info.length) $('b-info').style.display = 'none';
+  count();
+  if (TG) {
+    try { TG.ready(); TG.expand(); } catch (e) {}
+  }
+})();
+</script>
+</body>
+</html>
