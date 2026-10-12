@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-fIxIJaFVkzw5JKfLa+417F6rhr9icKrfF5FO7IRcSsc='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-XO965rjVca1zj7VPp7+djGR+/w0xjCOZo2u9PdZLRQI='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
@@ -75,6 +75,12 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
 .org{display:none;white-space:pre-wrap;font-size:14px;margin-top:6px;padding:8px 10px;border-left:3px solid var(--tg-theme-link-color,var(--f-btn));overflow-wrap:anywhere}
 .card.org-on .org{display:block}
 .info{background:var(--tg-theme-secondary-bg-color,var(--f-card));border-radius:12px;padding:10px 12px;margin:8px 0;font-size:15px;opacity:.85}
+[hidden]{display:none!important}
+.del{margin:4px 0 14px}
+#delbtn{width:100%;height:48px;border-radius:12px;border:1px solid var(--no);background:transparent;color:var(--no);font-size:16px;font-weight:600;cursor:pointer}
+#delask{background:var(--tg-theme-secondary-bg-color,var(--f-card));border-radius:12px;padding:12px;border:2px solid var(--no)}
+#delask p{margin:0 0 4px;font-weight:600}
+#delno{background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text));border:1px solid rgba(128,128,128,.35)}
 </style>
 </head>
 <body>
@@ -91,6 +97,13 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   <div class="gen" id="genbox">
     <label for="gen">Зауваження до всього списку (Асистент запише до відома)</label>
     <textarea id="gen" maxlength="500" placeholder="Необов'язково"></textarea>
+  </div>
+  <div class="del" id="delbox" hidden>
+    <button id="delbtn" type="button">Видалити нараду</button>
+    <div id="delask" hidden>
+      <p id="delq"></p>
+      <div class="edacts"><button id="delyes" class="n" type="button">Так, видалити</button><button id="delno" type="button">Ні, лишити</button></div>
+    </div>
   </div>
   <pre id="out"></pre>
   <footer><button id="send" type="button" disabled>Готово — надіслати</button></footer>
@@ -581,6 +594,43 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     }
   });
   $('gen').addEventListener('input', count);
+
+  // TASK-DISP-20 (доповнення Марго 12.10: «щоб я взагалі видалила нараду, з якою я не хочу ставити задачі»): одна кнопка
+  // внизу, підтвердження — тут же, у вікні. Боту — «x»: N (скільки задач вона бачила в питанні) без рішень по пунктах:
+  // рушій знімає всі пункти наради, що чекають, лише коли їх саме N (інакше — «Список змінився»); жодної задачі, людям
+  // нічого. Кнопка є лише, коли рушій дав назву наради (dm); стара сторінка цих полів не читає.
+  var DM = str(P.dm, 90), DN = (typeof P.dn === 'number' && P.dn > 0 && P.dn <= 1000 && P.dn === Math.floor(P.dn)) ? P.dn : 0;
+  function zadach(n) {
+    var a = n % 10, b = n % 100;
+    return a === 1 && b !== 11 ? 'задачу' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'задачі' : 'задач';
+  }
+  function sendDelete() {
+    var o = {v: 1, id: P.id, s: P.s, d: [], x: DN || 1}, r = $('gen').value.trim();
+    if (r) o.r = r;
+    var body = JSON.stringify(o);
+    if (bytes(body) > 4096) return;
+    if (IN_TG && typeof TG.sendData === 'function') {
+      try { TG.disableClosingConfirmation(); } catch (e) {}
+      TG.sendData(body);
+      return;
+    }
+    var out = $('out');
+    out.style.display = 'block';
+    out.textContent = 'Поза Telegram — нічого не надіслано. Ось що пішло б боту (' + bytes(body) + ' байт):\n' + body;
+  }
+  if (DM) {
+    $('delbox').hidden = false;
+    $('delbtn').addEventListener('click', function () {
+      $('delq').textContent = 'Видалити ' + (DN === 1 ? '1 задачу' : DN ? 'всі ' + DN + ' ' + zadach(DN) : 'всі задачі') +
+        ' наради ' + DM + '? Нічого не буде поставлено.';
+      $('delbtn').hidden = true;
+      $('delask').hidden = false;
+      haptic();
+      try { $('delask').scrollIntoView({block: 'center', behavior: 'smooth'}); } catch (e) {}
+    });
+    $('delno').addEventListener('click', function () { $('delask').hidden = true; $('delbtn').hidden = false; });
+    $('delyes').addEventListener('click', sendDelete);
+  }
 
   // Блоки: людям; її власні (Марго 06.10 — теж на погодження, окремо); не задачі (обговорення, повтори) — довідка.
   var people = items.filter(function (it) { return !it.own; }), own = items.filter(function (it) { return it.own; });
