@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-XO965rjVca1zj7VPp7+djGR+/w0xjCOZo2u9PdZLRQI='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-uIWNI30+9MN7hD7a6w3MOgdwE8ejCbFBrxhN0H99pI4='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
      бот отримує web_app_data у її чаті. Нічого стороннього, крім скрипта Telegram; жодних мережевих запитів (connect-src
-     'none'). Дані на сторінку — лише через textContent (не innerHTML). -->
+     'none'). Дані на сторінку — лише через textContent (не innerHTML).
+     TASK-DISP-22 (D258): змах униз вікна не закриває; позначки — чернеткою в сховищі Telegram (CloudStorage / DeviceStorage,
+     не localStorage), наступне відкриття того самого показу — на місці. -->
 <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
 <style>
 :root{--f-bg:#fff;--f-text:#1c1c1e;--f-hint:#7c7c80;--f-card:#f1f1f5;--f-btn:#2481cc;--f-btn-text:#fff;--ok:#2e9d4f;--no:#d9453b;--warn:rgba(255,166,0,.22)}
@@ -81,12 +83,14 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
 #delask{background:var(--tg-theme-secondary-bg-color,var(--f-card));border-radius:12px;padding:12px;border:2px solid var(--no)}
 #delask p{margin:0 0 4px;font-weight:600}
 #delno{background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text));border:1px solid rgba(128,128,128,.35)}
+.rest{background:rgba(36,129,204,.14);border-radius:10px;padding:8px 10px;margin:6px 0 4px;font-size:14px;line-height:1.35}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1 id="title">Погодити задачі</h1>
   <p class="sub" id="part"></p>
+  <p class="rest" id="rest" hidden></p>
   <div class="cnt" id="cnt"></div>
   <div id="err"></div>
   <main>
@@ -276,6 +280,13 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var SK = '__telegram__initParams', sp = JSON.parse(window.sessionStorage.getItem(SK) || 'null');
     if (sp && sp.d) { delete sp.d; window.sessionStorage.setItem(SK, JSON.stringify(sp)); }
   } catch (e) {}
+  // TASK-DISP-22 (D258): з 19.10 вікно закривалось на її iPhone до «Готово» — змах униз згортає Mini App. Вимикаю (з 7.7);
+  // закрити вікно можна й далі хрестиком, підтвердження закриття — як було.
+  try {
+    if (TG && TG.isVersionAtLeast && TG.isVersionAtLeast('7.7') && typeof TG.disableVerticalSwipes === 'function') {
+      TG.disableVerticalSwipes();
+    }
+  } catch (e) {}
   today = isoOk(P.td) ? P.td : new Date().toISOString().slice(0, 10);
   maxDay = plusDays(today, 366);
   (Array.isArray(P.tm) ? P.tm : []).slice(0, 200).forEach(function (p) {
@@ -460,6 +471,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       if (it.f.indexOf('p') >= 0 && !mine(it.w) && it.d === it.d0) { it.d = ''; dt.value = ''; }
       else if (it.f.indexOf('p') >= 0 && mine(it.w) && !it.d) { it.d = it.d0; dt.value = it.d0; }   // знову її — мій строк
       recheck(it);
+      keep(it, true);
     });
     ed.appendChild(sel);
     if (it.said && !it.w0) ed.appendChild(el('div', 'note', 'На нараді / у диктовці: «' + it.said + '»'));
@@ -474,11 +486,12 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     dt.disabled = cb.checked;
     nl.appendChild(cb); nl.appendChild(document.createTextNode('без строку'));
     it.sel = sel; it.dt = dt; it.cb = cb;
-    dt.addEventListener('change', function () { it.d = isoOk(dt.value) ? dt.value : ''; recheck(it); });
+    dt.addEventListener('change', function () { it.d = isoOk(dt.value) ? dt.value : ''; recheck(it); keep(it, true); });
     cb.addEventListener('change', function () {
       dt.disabled = cb.checked;
       it.d = cb.checked ? '-' : (isoOk(dt.value) ? dt.value : '');
       recheck(it);
+      keep(it, true);
     });
     line.appendChild(dt); line.appendChild(nl);
     ed.appendChild(line);
@@ -486,17 +499,18 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     ed.appendChild(el('label', null, 'Що зробити'));
     var ta = document.createElement('textarea');
     ta.maxLength = Math.min(500, Math.max(300, it.t0.length)); ta.value = it.t;
-    ta.addEventListener('input', function () { it.t = ta.value; });
-    ta.addEventListener('change', function () { recheck(it); });
+    ta.addEventListener('input', function () { it.t = ta.value; keep(it); });
+    ta.addEventListener('change', function () { recheck(it); keep(it, true); });
     ed.appendChild(ta);
     it.ta = ta;
 
     ed.appendChild(el('label', null, 'Зауваження'));
     var zz = document.createElement('textarea');
     zz.maxLength = 200; zz.value = it.z; zz.placeholder = 'Необов\'язково';
-    zz.addEventListener('input', function () { it.z = zz.value; count(); });
-    zz.addEventListener('change', function () { render(it); });
+    zz.addEventListener('input', function () { it.z = zz.value; count(); keep(it); });
+    zz.addEventListener('change', function () { render(it); keep(it, true); });
     ed.appendChild(zz);
+    it.zz = zz;
     ed.appendChild(el('div', 'note', 'З ✓ — піде людині разом із задачею. З ✗ — Асистентові до відома, чому не ставите.'));
 
     it.warnEl = el('div', 'warn');                     // текст — у render (правка не перебудовується)
@@ -526,6 +540,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     }
     haptic();
     render(it); count();
+    keep(it, true);
     if (it.bad) it.card.scrollIntoView({block: 'nearest', behavior: 'smooth'});
   }
 
@@ -574,7 +589,8 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var c = count();
     if (c.size > 4096) return;
     if (IN_TG && typeof TG.sendData === 'function') {
-      try { TG.disableClosingConfirmation(); } catch (e) {}
+      dropDraft(false);                                // DISP-22: рішення пішли — чернетку цього вікна прибрати (до sendData:
+      try { TG.disableClosingConfirmation(); } catch (e) {}   // вікно після нього закривається)
       TG.sendData(c.body);
       return;
     }
@@ -593,7 +609,8 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       send();
     }
   });
-  $('gen').addEventListener('input', count);
+  $('gen').addEventListener('input', function () { count(); keepR(); });
+  $('gen').addEventListener('change', function () { keepR(true); });
 
   // TASK-DISP-20 (доповнення Марго 12.10: «щоб я взагалі видалила нараду, з якою я не хочу ставити задачі»): одна кнопка
   // внизу, підтвердження — тут же, у вікні. Боту — «x»: N (скільки задач вона бачила в питанні) без рішень по пунктах:
@@ -610,6 +627,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var body = JSON.stringify(o);
     if (bytes(body) > 4096) return;
     if (IN_TG && typeof TG.sendData === 'function') {
+      dropDraft(true);                                 // DISP-22: нараду видалено — чернетку всього показу прибрати
       try { TG.disableClosingConfirmation(); } catch (e) {}
       TG.sendData(body);
       return;
@@ -632,6 +650,298 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     $('delyes').addEventListener('click', sendDelete);
   }
 
+  // TASK-DISP-22 (D258): чернетка позначок. З 19.10 вікно закривалось на її телефоні до «Готово», і все позначене зникало
+  // (позначки жили лише в пам'яті сторінки). Тепер кожна зміна — одразу в сховище Telegram: CloudStorage (з 6.9), не
+  // вийшло — DeviceStorage (з 9.0); НЕ сховище браузера (домен github.io спільний для її сторінок, рецензія М7). Ключ —
+  // показ + номер пункту (не підпис частини: частини можуть бути перерізані). Пункт, змінений рушієм після чернетки (кому /
+  // строк / текст), — не відновлюю й кажу. Після «Готово» — чернетку цього вікна прибираю; чужі давніші за 14 днів — при
+  // відкритті. Сховища немає чи не відповідає — вікно працює, як раніше. Боту (sendData) — те саме, що й без чернетки.
+  var DK = 'aw1-', DDAYS = 14, DRAFT = null, dkeys = [], rTouched = false, rSaved = false, rTm = null;
+  var SENT = 0;                                       // 1 — «Готово» натиснуто, 2 — «Видалити нараду»: далі нічого не пишу
+  var OURS = /^aw1-[A-Za-z0-9_]{1,110}-(?:\d{1,4}|r\d{1,4})$/;
+  var DPRE = DK + P.id.replace(/[^A-Za-z0-9]/g, function (c) { return '_' + c.charCodeAt(0).toString(16) + '_'; }) + '-';
+  // Зауваження до списку — цього вікна (за першим пунктом), не всього показу: в іншій частині воно не виринає й не йде
+  // вдруге (рецензія коду DISP-22, Д4).
+  var RKEY = DPRE + 'r' + (items.length ? items[0].n : 0);
+  // Схоже на пароль, код із SMS, картку чи ключ — у сховище не кладу (рушій такого й так не прийме). Класи — як
+  // secret_kind (hermes-textclean), але обережніше: слово «пароль» і без значення. Без lookbehind (iOS < 16.4 його не знає),
+  // невидимі символи — геть до перевірки (рецензія безпеки DISP-22, Д1).
+  var INVIS = new RegExp('[' + [0xad, 0x180e, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e,
+    0x2060, 0x2061, 0x2062, 0x2063, 0x2064, 0xfeff].map(function (k) { return String.fromCharCode(k); }).join('') + ']', 'g');
+  var WB = '(?:^|[^0-9A-Za-zА-ЯҐЄІЇа-яґєії])', WE = '(?=$|[^0-9A-Za-zА-ЯҐЄІЇа-яґєії])';
+  var S_RX = [
+    new RegExp(WB + '(?:парол|пасворд|password|passwd)', 'i'),
+    new RegExp(WB + '(?:pass|пасс|pwd|pin|пін|пин|cvv|cvc)(?:-?код[а-яґєії]*)?' + WE, 'i'),
+    /(?:смс|sms)[-\s]*(?:код|code)[а-яґєії]*\s*[:\-—=]?\s*\d{4,8}/i,
+    new RegExp(WB + '(?:код|коду|кодом|коди|code)\\s*(?:(?:з|із|из|from)\\s*)?(?:(?:смс|sms|повідомлення|сообщения)\\s*)?' +
+      '[:\\-—=]\\s*\\d{4,8}' + WE, 'i'),
+    /sk-[A-Za-z0-9_-]{20,}|\d{8,10}:[A-Za-z0-9_-]{35}|gh[pousr]_[A-Za-z0-9]{30,}|AIza[0-9A-Za-z_-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}|BEGIN [A-Z ]*PRIVATE KEY/
+  ];
+  var S_CODE = new RegExp(WB + '(?:код|коду|кодом|коди|кодів|code|otp)\\s+((?:[^\\s\\d]+\\s+){0,3})(\\d{4,8})(?![\\d.,])', 'gi');
+  var S_REG = /єдрпоу|едрпоу|edrpou|квед|рнокпп|іпн|инн|ипн|ipn|iban|рахунк|счет|счёт|договор|ттн|накладн|поштов|почтов|індекс|индекс|країн|стран|товар|уктзед|мфо|клієнт|клиент|регіон|регион|області|области|міста|города|телефон/i;
+  function luhn(d) {
+    var s = 0;
+    for (var i = 0; i < d.length; i++) {
+      var k = +d.charAt(d.length - 1 - i);
+      if (i % 2) { k *= 2; if (k > 9) k -= 9; }
+      s += k;
+    }
+    return s % 10 === 0;
+  }
+  function secretish(s) {
+    s = String(s || '').replace(INVIS, '');
+    if (!s) return false;
+    if (S_RX.some(function (r) { return r.test(s); })) return true;
+    var cards = s.replace(/[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30}/gi, ' ').match(/(?:\d[ -]?){12,18}\d/g) || [];
+    if (cards.some(function (c) { var d = c.replace(/\D/g, ''); return d.length >= 13 && d.length <= 19 && luhn(d); })) return true;
+    var m;
+    S_CODE.lastIndex = 0;
+    while ((m = S_CODE.exec(s))) if (!S_REG.test(m[1] || '')) return true;
+    return false;
+  }
+  function ikey(n) { return DPRE + n; }
+  function fp(it) {
+    // Відбиток пункту, яким його дав рушій: усе, що є в знімку пункту рушія (aw_snap) і видно на сторінці, — змінилось
+    // хоч щось (кому, строк, час, текст, результат, навіщо, «терміново», посилання, номер) — позначка з
+    // чернетки не переноситься (рецензія безпеки DISP-22, В1). Фраза DISP-19 про строк (x) — ні: рушій її не підписує й
+    // перераховує, тож вона дала б хибне «Пункт змінився» (повторна рецензія коду).
+    var s = [it.w0, it.d0, it.hm, it.t0, it.res, it.why, it.f, it.no].join('\u0001'), a = 0x811c9dc5, b = 0x9747b28c;
+    for (var i = 0; i < s.length; i++) {
+      a = Math.imul(a ^ s.charCodeAt(i), 16777619) >>> 0;
+      b = Math.imul(b ^ s.charCodeAt(i), 2246822519) >>> 0;
+    }
+    return ('0000000' + a.toString(16)).slice(-8) + ('0000000' + b.toString(16)).slice(-8);
+  }
+  function parseDraft(v) {
+    if (typeof v !== 'string' || !v || v.length > 4096) return null;
+    var x;
+    try { x = JSON.parse(v); } catch (e) { return null; }
+    return x && typeof x === 'object' && !Array.isArray(x) && typeof x.a === 'number' ? x : null;
+  }
+  function itemDraft(it) {
+    // Пункт — цілком або ніяк: ✓ без її тексту чи зауваження, які не вдалося зберегти, після відновлення пішов би людині
+    // зі старим текстом. Тому текст / зауваження, схожі на секрет, — лише позначка «s» без змісту (наступного разу —
+    // «позначте ще раз»); задовге значення — чернетки пункту немає.
+    var x = {a: Date.now(), f: fp(it), c: it.dec === 1 || it.dec === 0 ? it.dec : null}, any = x.c !== null;
+    if (it.w !== it.w0) { x.w = it.w; x.d = it.d; any = true; }     // кому змінено — строк завжди разом (D208)
+    if (it.d !== it.d0) { x.d = it.d; any = true; }
+    if (it.t !== it.t0) { x.t = it.t; any = true; }
+    if (it.z) { x.z = it.z; any = true; }
+    if (!any) return null;
+    if (secretish(x.t) || secretish(x.z)) return JSON.stringify({a: x.a, f: x.f, s: 1});
+    var v = JSON.stringify(x);
+    return v.length <= 4096 ? v : null;                // межа значення сховища — 4096
+  }
+  function cloudStore(cs) {
+    return {
+      list: function (cb) { cs.getKeys(function (e, r) { cb(e || !Array.isArray(r) ? null : r); }); },
+      get: function (keys, cb) {
+        if (!keys.length) return cb({});
+        cs.getItems(keys, function (e, r) { cb(e || !r || typeof r !== 'object' ? null : r); });
+      },
+      set: function (k, v) { cs.setItem(k, v); },
+      del: function (keys) { if (keys.length) cs.removeItems(keys); },
+      at: null
+    };
+  }
+  function deviceStore(ds) {
+    // DeviceStorage ключів не перелічує — перелік наших ключів (ключ → коли записано) тримаю окремим ключем.
+    var IDX = DK + 'idx', idx = null;
+    function saveIdx() { ds.setItem(IDX, JSON.stringify(idx)); }
+    return {
+      list: function (cb) {
+        ds.getItem(IDX, function (e, v) {
+          if (e) return cb(null);
+          try { idx = v ? JSON.parse(v) : {}; } catch (x) { idx = {}; }
+          if (!idx || typeof idx !== 'object' || Array.isArray(idx)) idx = {};
+          cb(Object.keys(idx));
+        });
+      },
+      get: function (keys, cb) {
+        var out = {}, left = keys.length, over = false;
+        if (!left) return cb(out);
+        keys.forEach(function (k) {
+          ds.getItem(k, function (e, v) {
+            if (over) return;
+            if (e) { over = true; return cb(null); }
+            if (typeof v === 'string') out[k] = v;
+            if (--left === 0) { over = true; cb(out); }
+          });
+        });
+      },
+      set: function (k, v) { ds.setItem(k, v); if (idx) { idx[k] = Date.now(); saveIdx(); } },
+      del: function (keys) {
+        keys.forEach(function (k) { ds.removeItem(k); if (idx) delete idx[k]; });
+        if (idx && keys.length) saveIdx();
+      },
+      at: function (k) { return idx && typeof idx[k] === 'number' ? idx[k] : 0; }
+    };
+  }
+  function saveItem(it) {
+    clearTimeout(it.tm);
+    it.tm = null;
+    if (!DRAFT || SENT) return;
+    try {
+      var v = itemDraft(it);
+      if (v) { DRAFT.set(ikey(it.n), v); it.saved = true; }
+      else if (it.saved) { DRAFT.del([ikey(it.n)]); it.saved = false; }
+    } catch (e) {}
+  }
+  function keep(it, now) {                            // кожна зміна — у чернетку (текст — коли вона на мить зупинилась)
+    it.touched = true;
+    clearTimeout(it.tm);
+    it.tm = now ? null : setTimeout(function () { saveItem(it); }, 400);
+    if (now) saveItem(it);
+  }
+  function saveR() {
+    clearTimeout(rTm);
+    rTm = null;
+    if (!DRAFT || SENT) return;
+    try {
+      var r = $('gen').value.trim();
+      if (r && !secretish(r)) { DRAFT.set(RKEY, JSON.stringify({a: Date.now(), r: r})); rSaved = true; }
+      else if (rSaved) { DRAFT.del([RKEY]); rSaved = false; }
+    } catch (e) {}
+  }
+  function keepR(now) {
+    rTouched = true;
+    clearTimeout(rTm);
+    rTm = now ? null : setTimeout(saveR, 400);
+    if (now) saveR();
+  }
+  function flushAll() {
+    items.forEach(function (it) { if (it.tm) saveItem(it); });
+    if (rTm) saveR();
+  }
+  function dropKeys(s, all) {                         // ключі цього вікна (all — і всього показу) — геть
+    var keys = items.map(function (it) { return ikey(it.n); }).concat([RKEY]);
+    if (all) dkeys.forEach(function (k) { if (k.indexOf(DPRE) === 0 && keys.indexOf(k) < 0) keys.push(k); });
+    try { s.del(keys); } catch (e) {}
+  }
+  function dropDraft(all) {
+    // Перед sendData: рішення пішли — чернетку цього вікна (all — всього показу) прибрати; далі нічого не пишу. Сховище
+    // ще не відповіло — прибере, щойно відповість (tryStore), і нічого з цього вікна вже не запише (рецензія безпеки, Д3).
+    SENT = all ? 2 : 1;
+    items.forEach(function (it) { clearTimeout(it.tm); it.tm = null; });
+    clearTimeout(rTm);
+    if (DRAFT) dropKeys(DRAFT, all);
+    DRAFT = null;
+  }
+  function applyDraft(it, x) {
+    if ('w' in x) it.w = typeof x.w === 'string' && (x.w === '' || team[x.w]) ? x.w : '';
+    if ('d' in x) it.d = typeof x.d === 'string' && (x.d === '-' || (isoOk(x.d) && x.d >= today && x.d <= maxDay)) ? x.d : '';
+    else if ('w' in x && it.f.indexOf('p') >= 0 && !mine(it.w)) it.d = '';   // строк асистента — лише її задачі (D208)
+    if (typeof x.t === 'string') it.t = x.t.slice(0, it.ta ? it.ta.maxLength : 500);
+    if (typeof x.z === 'string') it.z = x.z.slice(0, 200);
+    if (x.c === 1 || x.c === 0) it.dec = x.c;
+    if (it.dec === 1 && !complete(it)) it.dec = null;
+    if (it.sel) it.sel.value = it.w;
+    if (it.dt) { it.dt.value = isoOk(it.d) ? it.d : ''; it.cb.checked = it.d === '-'; it.dt.disabled = it.cb.checked; }
+    if (it.ta) it.ta.value = it.t;
+    if (it.zz) it.zz.value = it.z;
+    it.saved = true;
+    render(it);
+  }
+  function restore(vals) {
+    var y = 0, n = 0, e = 0, moved = [], hid = [], old = Date.now() - DDAYS * 864e5;
+    items.forEach(function (it) {
+      var x = parseDraft(vals[ikey(it.n)]);
+      if (!x || it.touched || !(x.a > old)) return;
+      if (x.f !== fp(it)) { moved.push(it.n); DRAFT.del([ikey(it.n)]); return; }
+      if (x.s === 1) { hid.push(it.n); DRAFT.del([ikey(it.n)]); return; }   // було схоже на секрет — змісту не зберігала
+      applyDraft(it, x);
+      if (it.dec === 1) y++; else if (it.dec === 0) n++; else e++;
+    });
+    var r = parseDraft(vals[RKEY]), gr = '';
+    if (r && typeof r.r === 'string' && r.a > old && !rTouched && !$('gen').value.trim()) {
+      gr = r.r.slice(0, 500);
+      $('gen').value = gr;
+      rSaved = true;
+    }
+    var got = [];
+    if (y) got.push('✓\u00a0' + y);
+    if (n) got.push('✗\u00a0' + n);
+    if (e) got.push('з\u00a0правками без рішення\u00a0' + e);
+    if (gr) got.push('зауваження до списку');
+    var line = got.length ? 'Ваші позначки з минулого відкриття збережено: ' + got.join(' · ') + '.' : '';
+    if (moved.length) {
+      line += (line ? ' ' : '') + (moved.length === 1 ? 'Пункт ' + moved[0] + ' змінився відтоді — позначте його ще раз.' :
+        'Пункти ' + moved.join(', ') + ' змінились відтоді — позначте їх ще раз.');
+    }
+    if (hid.length) {
+      line += (line ? ' ' : '') + (hid.length === 1 ? 'Пункт ' + hid[0] : 'Пункти ' + hid.join(', ')) + ' позначте ще раз: ' +
+        'там було щось схоже на пароль чи код — таке не зберігається.';
+    }
+    if (line) { $('rest').textContent = line; $('rest').hidden = false; }
+    count();
+  }
+  function opened(keys) {
+    dkeys = keys.filter(function (k) { return typeof k === 'string' && OURS.test(k); });
+    var mine = items.map(function (it) { return ikey(it.n); }).concat([RKEY]);
+    var old = Date.now() - DDAYS * 864e5, other = dkeys.filter(function (k) { return mine.indexOf(k) < 0; });
+    try {
+      if (DRAFT.at) {
+        DRAFT.del(other.filter(function (k) { return !(DRAFT.at(k) > old); }));
+      } else {
+        for (var i = 0; i < other.length; i += 20) {
+          (function (b) {
+            DRAFT.get(b, function (vals) {
+              if (vals && DRAFT) DRAFT.del(b.filter(function (k) { var x = parseDraft(vals[k]); return !x || !(x.a > old); }));
+            });
+          })(other.slice(i, i + 20));
+        }
+      }
+    } catch (e) {}
+    var have = mine.filter(function (k) { return dkeys.indexOf(k) >= 0; });
+    DRAFT.get(have, function (vals) {
+      if (!DRAFT || SENT) return;
+      try { restore(vals || {}); } catch (e) {}
+      // Позначене, поки сховище відповідало, — у чернетку; стару чернетку такого пункту (вона її вже перепозначила чи
+      // зняла) — прибрати, а не лишити до наступного відкриття (рецензія коду DISP-22, Д3).
+      items.forEach(function (it) {
+        if (!it.touched) return;
+        it.saved = have.indexOf(ikey(it.n)) >= 0;
+        saveItem(it);
+      });
+      if (rTouched) { rSaved = have.indexOf(RKEY) >= 0; saveR(); }
+    });
+  }
+  function tryStore(s, next) {
+    // До DeviceStorage — лише коли CloudStorage відповів помилкою (чи його немає), а не коли він повільний: інакше
+    // позначки розійшлися б по двох сховищах (рецензія коду DISP-22, В3). Пізня відповідь — приймається; поки сховище
+    // мовчить, вікно працює без чернетки, позначене — запишу, щойно відповість.
+    if (!s) return next();
+    var over = false;
+    try {
+      s.list(function (keys) {
+        if (over) return;
+        over = true;
+        if (!keys) return next();
+        if (SENT) {                                   // «Готово» вже натиснуто — лише прибрати чернетку цього вікна
+          dkeys = keys.filter(function (k) { return typeof k === 'string' && OURS.test(k); });
+          return dropKeys(s, SENT === 2);
+        }
+        DRAFT = s;
+        opened(keys);
+      });
+    } catch (e) {
+      if (!over) { over = true; next(); }
+    }
+  }
+  function startDraft() {
+    // Ключ, якого не впізнає перелік (OURS), не прибирався б ніколи — тоді краще без чернетки (рецензія безпеки, Д4).
+    if (!IN_TG || !TG.isVersionAtLeast || !OURS.test(ikey(9999)) || ikey(9999).length > 128 || !items.length) return;
+    var cs = null;
+    try { if (TG.isVersionAtLeast('6.9') && TG.CloudStorage) cs = cloudStore(TG.CloudStorage); } catch (e) {}
+    tryStore(cs, function () {
+      var ds = null;
+      try { if (TG.isVersionAtLeast('9.0') && TG.DeviceStorage) ds = deviceStore(TG.DeviceStorage); } catch (e) {}
+      tryStore(ds, function () {});
+    });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushAll(); });
+    window.addEventListener('pagehide', flushAll);
+  }
+
   // Блоки: людям; її власні (Марго 06.10 — теж на погодження, окремо); не задачі (обговорення, повтори) — довідка.
   var people = items.filter(function (it) { return !it.own; }), own = items.filter(function (it) { return it.own; });
   people.forEach(function (it) { $('list').appendChild(render(it)); });
@@ -649,6 +959,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   if (!own.length) $('b-own').style.display = 'none';
   if (!info.length) $('b-info').style.display = 'none';
   count();
+  startDraft();
   if (TG) {
     try { TG.ready(); TG.expand(); } catch (e) {}
   }
