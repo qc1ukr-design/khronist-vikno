@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-qCnvNO0LbajtjIGrUmKlPy+AEX6NsukLjuAvsX9ZAG8='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-rv5sI6UAclOkxC4rdyJ7uI4pBEowvS1d69zYFYCdZ6Y='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
@@ -56,12 +56,12 @@ textarea{min-height:66px;resize:vertical}
 .dhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 0 6px}
 .dhead label{margin:0}
 .nodl{display:flex;gap:6px;align-items:center;font-size:15px;white-space:nowrap;min-height:44px;cursor:pointer}
-.cal,.who{scroll-margin:56px 0 96px}
+.cal,.wbox{scroll-margin:56px 0 96px}
 .nodl input{width:22px;height:22px;margin:0}
-.cal button,.who button{font:inherit;color:inherit;cursor:pointer;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.cal button,.wbox button{font:inherit;color:inherit;cursor:pointer;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .cal button:disabled{cursor:default}
 .wl{display:flex;flex-wrap:wrap;gap:6px}
-.wl button{flex:1 1 auto;min-height:44px;padding:6px 12px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));font-size:15px;line-height:1.25}
+.wl button{flex:1 1 auto;min-width:0;max-width:100%;overflow-wrap:anywhere;min-height:44px;padding:6px 12px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));font-size:15px;line-height:1.25}
 .wl button.on{background:var(--tg-theme-button-color,var(--f-btn));border-color:var(--tg-theme-button-color,var(--f-btn));color:var(--tg-theme-button-text-color,var(--f-btn-text))}
 .qk{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
 .qk button{flex:1 1 auto;min-height:44px;padding:0 10px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));font-size:15px;white-space:nowrap}
@@ -290,14 +290,15 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
 
   // TASK-DISP-24 (1а): Марго 27.10 — вікно «просто з'їжджає до списку чатів, без екрана завантаження»: схоже, рух пальця
   // вбік Telegram на iPhone бере за жест «назад» і закриває вікно разом із чатом. Рух переважно вбік (після 8 px) сторінка
-  // забирає собі; вертикальне гортання, кілька пальців і текстові поля (там вбік рухають курсор) — не чіпаю. Разом із
+  // забирає собі; вертикальне гортання, кілька пальців і текстове поле, де вона саме пише (там вбік рухають курсор), — не
+  // чіпаю. Разом із
   // touch-action: pan-y і overscroll-behavior: none у стилях.
   (function () {
     var x0 = 0, y0 = 0, dir = 2;                       // 0 — ще не ясно, 1 — вбік (забираю), 2 — не чіпаю
     try {
       document.addEventListener('touchstart', function (e) {
         var t = e.touches && e.touches.length === 1 ? e.touches[0] : null;
-        dir = t && !(e.target && e.target.tagName === 'TEXTAREA') ? 0 : 2;
+        dir = t && !(e.target && e.target.tagName === 'TEXTAREA' && e.target === document.activeElement) ? 0 : 2;
         if (t) { x0 = t.clientX; y0 = t.clientY; }
       }, {passive: true});
       document.addEventListener('touchmove', function (e) {
@@ -354,8 +355,10 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       n: r.n, w0: team[w] ? w : '', t0: str(r.t, 500), d0: (d === '-' || isoOk(d)) ? d : '',
       why: str(r.y, 300), res: str(r.r, 300), hm: str(r.h, 5), f: str(r.f, 8), said: str(r.s, 80),
       no: (typeof r.no === 'number' && r.no > 0) ? r.no : 0, o: str(r.o, 400), u: str(r.u, 300), x: str(r.x, 200),
-      cand: Array.isArray(r.c) ? r.c.filter(function (k) { return team[k]; }).slice(0, 5) : []
+      cand: Array.isArray(r.c) ? r.c.filter(function (k) { return team[k]; }).slice(0, 5) : [], gw: str(r.g, 120)
     };
+    // Строк асистента (f: p) рушій дає лише її задачі (D208); прийшов на чужій — не беру (рецензія безпеки DISP-24).
+    if (it.f.indexOf('p') >= 0 && !mine(it.w0)) it.d0 = '';
     it.w = it.w0; it.t = it.t0; it.d = it.d0; it.z = ''; it.dec = null; it.own = mine(it.w0);
     items.push(it);
   });
@@ -403,6 +406,9 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   function changed(it) {
     return it.w !== it.w0 || it.d !== it.d0 || it.t.trim() !== it.t0;
   }
+  // DISP-23 (D259): «Кому» заповнив Асистент здогадом (ім'я на нараді — кількох людей чи лише схоже) — видно, поки вона
+  // його не змінила; ✓ — згода й на здогад.
+  function guessed(it) { return it.f.indexOf('g') >= 0 && !!it.w0 && !mine(it.w0) && it.w === it.w0; }   // лише людина з команди
   // TASK-DISP-24 (1а): вібрації немає — кожен дотик не повинен ще й звертатися до Telegram (вікно з 27.10 зникало на 6–8-й задачі).
 
   // TASK-DISP-24: правка не перебудовується, але рядок задачі над нею міняє висоту (зникає «❓ до коли», з'являється
@@ -446,7 +452,8 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var kv = el('div', 'kv');
     function pair(k, v) { kv.appendChild(el('div', 'k', k)); var e = el('div', 'v', v); kv.appendChild(e); return e; }
     pair(it.n + '.', it.w === 'owner' ? 'Ваша задача (у ваш список)' :
-         ASST && it.w === ASST ? 'Ваша задача — веде Асистент (нагадає вам у день строку)' : it.w ? 'Кому: ' + team[it.w] :
+         ASST && it.w === ASST ? 'Ваша задача — веде Асистент (нагадає вам у день строку)' :
+         it.w ? 'Кому: ' + team[it.w] + (guessed(it) ? ' — здогад Асистента' : '') :
          (it.said ? 'Кому: «' + it.said + '» — оберіть, хто це' : 'Кому: не названо — оберіть'));
     var dl = pair('', 'Строк: ' + (it.d === '-' ? 'без строку' : isoOk(it.d) ? dlabel(it.d) + (it.hm && it.d === it.d0 ? ', ' + it.hm : '') : '?'));
     dl.className = 'v tap' + (it.d === '-' || (isoOk(it.d) && it.d >= today) ? '' : ' need');
@@ -456,6 +463,10 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     body.appendChild(kv);
     // DISP-19: строк зсунуто за «≤ 5 на день», понад ліміт чи графік доведення — фраза рушія, поки строк її не змінено.
     if (it.x && it.d === it.d0) body.appendChild(el('div', 'note day', '📅 ' + it.x));
+    if (guessed(it)) {
+      body.appendChild(el('div', 'note day', '🤔 ' + (it.said ? 'На нараді: «' + it.said + '». ' : '') +
+                          (it.gw ? 'Чому так: ' + endDot(it.gw) + ' ' : '') + 'Інша людина — «Змінити».'));
+    }
     var msg = el('div', 'msg', mine(it.w) ? 'Що зробити: ' + endDot(taskText(it)) : t1(it));
     msg.setAttribute('aria-label', mine(it.w) ? 'Ваша задача' : 'Текст, який отримає людина');
     body.appendChild(msg);
@@ -621,11 +632,11 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   // календар). Порядок — як був у списку: як назвали на нараді (примітка) і кандидати першими, далі решта команди,
   // «Марго (собі)», Асистент. Обраний — виділений; зміна лише перефарбовує кнопки.
   function whoBox(it) {
-    var box = el('div', 'who'), list = el('div', 'wl'), bs = [], seen = {};
+    var box = el('div', 'wbox'), list = el('div', 'wl'), bs = [], seen = Object.create(null);
     box.setAttribute('role', 'group');
     box.setAttribute('aria-label', 'Кому задача ' + it.n);
     box.appendChild(el('label', null, 'Кому'));
-    if (it.said && !it.w0) box.appendChild(el('div', 'note', 'На нараді / у диктовці: «' + it.said + '»'));
+    if (it.said && (!it.w0 || it.f.indexOf('g') >= 0)) box.appendChild(el('div', 'note', 'На нараді / у диктовці: «' + it.said + '»'));
     it.cand.concat(order, ['owner'], ASST ? [ASST] : []).forEach(function (k) {
       if (seen[k] || !team[k]) return;
       seen[k] = 1;
@@ -636,6 +647,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     });
     box.appendChild(list);
     function pickWho(k) {
+      if (k === it.w) return;                          // уже обрано (select на той самий вибір теж нічого не робив)
       steady(box, function () {
         it.w = k;
         // Строк, який запропонував асистент, — лише для її власної (D208): людині — лише дата, яку обрала вона.
@@ -952,7 +964,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   // TASK-DISP-24 (1а): кожен запис у сховище — звернення до Telegram, тож пишу пачкою: не частіше ніж раз на FGAP на все
   // вікно, пункт, що не змінився з минулого запису, — не пишу. Перед «Готово», при згортанні й закритті вікна — одразу.
   // Формат ключів і значень — той самий (DISP-22), чернетки, записані старою сторінкою, читаються.
-  var DIRTY = [], rDirty = false, rLast = '', FT = null, FLAST = 0, FGAP = 1000;
+  var DIRTY = [], rDirty = false, rLast = '', FT = null, FLAST = -1e15, FGAP = 1000;
   function bare(v) { return v.replace(/^\{"a":\d+,/, '{'); }   // значення без часу запису — щоб звірити з минулим
   function saveItem(it) {
     if (!DRAFT || SENT) return;
@@ -986,7 +998,8 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   }
   function plan() {                                   // сховище ще не відповіло — запишу, щойно відповість (opened)
     if (FT || !DRAFT || SENT) return;
-    FT = setTimeout(flush, Math.max(300, FLAST + FGAP - Date.now()));
+    var wait = FLAST + FGAP - Date.now();             // перша зміна — одразу, наступні за секунду — однією пачкою
+    if (wait <= 0) flush(); else FT = setTimeout(flush, wait);
   }
   function keep(it) {                                 // кожна зміна — у чернетку (пачкою, див. вище)
     it.touched = true;
@@ -1085,10 +1098,10 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       // зняла) — прибрати, а не лишити до наступного відкриття (рецензія коду DISP-22, Д3).
       items.forEach(function (it) {
         if (!it.touched) return;
-        it.saved = have.indexOf(ikey(it.n)) >= 0;
+        if (have.indexOf(ikey(it.n)) >= 0) it.saved = true;   // стара чернетка є — прибрати, навіть якщо вже писала (рецензія коду DISP-24)
         if (DIRTY.indexOf(it) < 0) DIRTY.push(it);
       });
-      if (rTouched) { rSaved = have.indexOf(RKEY) >= 0; rDirty = true; }
+      if (rTouched) { if (have.indexOf(RKEY) >= 0) rSaved = true; rDirty = true; }
       flush();
     });
   }
