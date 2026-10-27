@@ -4,20 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-uIWNI30+9MN7hD7a6w3MOgdwE8ejCbFBrxhN0H99pI4='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-qCnvNO0LbajtjIGrUmKlPy+AEX6NsukLjuAvsX9ZAG8='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
      бот отримує web_app_data у її чаті. Нічого стороннього, крім скрипта Telegram; жодних мережевих запитів (connect-src
      'none'). Дані на сторінку — лише через textContent (не innerHTML).
      TASK-DISP-22 (D258): змах униз вікна не закриває; позначки — чернеткою в сховищі Telegram (CloudStorage / DeviceStorage,
-     не localStorage), наступне відкриття того самого показу — на місці. -->
+     не localStorage), наступне відкриття того самого показу — на місці.
+     TASK-DISP-24 (D260): дата й «Кому» — свої кнопки на сторінці (без рідного календаря й колеса iOS); рух пальця вбік
+     сторінка забирає собі; до Telegram — лише потрібне (без вібрації, чернетка пачкою). -->
 <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
 <style>
 :root{--f-bg:#fff;--f-text:#1c1c1e;--f-hint:#7c7c80;--f-card:#f1f1f5;--f-btn:#2481cc;--f-btn-text:#fff;--ok:#2e9d4f;--no:#d9453b;--warn:rgba(255,166,0,.22)}
 @media (prefers-color-scheme:dark){:root{--f-bg:#17212b;--f-text:#f2f2f2;--f-hint:#8b9aa7;--f-card:#232e3c;--f-btn:#5288c1;--f-btn-text:#fff}}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0}
+html,body{margin:0;padding:0;overscroll-behavior:none;touch-action:pan-y}
+body{overflow-x:hidden;overflow-wrap:break-word}
+button{touch-action:manipulation}
 body{background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text));font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
 .wrap{max-width:640px;margin:0 auto;padding:12px 14px 0}
 h1{font-size:18px;margin:4px 0 2px;line-height:1.3}
@@ -47,12 +51,32 @@ button.chip{border:none;font:inherit;font-size:13px;line-height:1.4;color:inheri
 .ed{display:none;margin-top:10px;border-top:1px solid rgba(128,128,128,.2);padding-top:4px}
 .card.open .ed{display:block}
 label{display:block;font-size:14px;color:var(--tg-theme-hint-color,var(--f-hint));margin:10px 0 4px}
-select,input[type=date],textarea{width:100%;font:inherit;font-size:16px;padding:10px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text))}
+textarea{width:100%;font:inherit;font-size:16px;padding:10px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));color:var(--tg-theme-text-color,var(--f-text))}
 textarea{min-height:66px;resize:vertical}
-.line{display:flex;gap:10px;align-items:center}
-.line input[type=date]{flex:1;min-width:0;min-height:44px}
-.nodl{display:flex;gap:6px;align-items:center;font-size:15px;white-space:nowrap}
-.nodl input{width:22px;height:22px}
+.dhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 0 6px}
+.dhead label{margin:0}
+.nodl{display:flex;gap:6px;align-items:center;font-size:15px;white-space:nowrap;min-height:44px;cursor:pointer}
+.cal,.who{scroll-margin:56px 0 96px}
+.nodl input{width:22px;height:22px;margin:0}
+.cal button,.who button{font:inherit;color:inherit;cursor:pointer;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.cal button:disabled{cursor:default}
+.wl{display:flex;flex-wrap:wrap;gap:6px}
+.wl button{flex:1 1 auto;min-height:44px;padding:6px 12px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));font-size:15px;line-height:1.25}
+.wl button.on{background:var(--tg-theme-button-color,var(--f-btn));border-color:var(--tg-theme-button-color,var(--f-btn));color:var(--tg-theme-button-text-color,var(--f-btn-text))}
+.qk{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.qk button{flex:1 1 auto;min-height:44px;padding:0 10px;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:var(--tg-theme-bg-color,var(--f-bg));font-size:15px;white-space:nowrap}
+.chd{display:flex;align-items:center;justify-content:space-between}
+.chd button{width:44px;height:44px;border:none;background:none;color:var(--tg-theme-link-color,var(--f-btn));font-size:28px;line-height:1;padding:0}
+.chd button:disabled{opacity:.25}
+.chd .mt{font-weight:600}
+.cg{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;margin:0 -6px}
+.cg .wd{text-align:center;font-size:12px;color:var(--tg-theme-hint-color,var(--f-hint));padding:2px 0 4px}
+.cg button{height:44px;padding:0;border-radius:10px;border:2px solid transparent;background:none;font-size:16px}
+.cg button.td{border-color:var(--tg-theme-link-color,var(--f-btn))}
+.cg button:disabled{opacity:.3}
+.cg button.e{visibility:hidden}
+.qk button.on,.cg button.on{background:var(--tg-theme-button-color,var(--f-btn));border-color:var(--tg-theme-button-color,var(--f-btn));color:var(--tg-theme-button-text-color,var(--f-btn-text))}
+.cg button.on{font-weight:600}
 .warn{color:var(--no);font-size:14px;margin-top:8px;display:none}
 .card.bad .warn{display:block}
 .note{font-size:13px;color:var(--tg-theme-hint-color,var(--f-hint));margin-top:3px}
@@ -228,7 +252,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     return e;
   }
   function str(x, n) { return typeof x === 'string' ? x.slice(0, n) : ''; }
-  function isoOk(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s); }
+  function isoOk(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s); }
   function dlabel(s) {
     if (!isoOk(s)) return '';
     var p = s.split('-'), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
@@ -264,6 +288,27 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     e.style.display = 'block';
   }
 
+  // TASK-DISP-24 (1а): Марго 27.10 — вікно «просто з'їжджає до списку чатів, без екрана завантаження»: схоже, рух пальця
+  // вбік Telegram на iPhone бере за жест «назад» і закриває вікно разом із чатом. Рух переважно вбік (після 8 px) сторінка
+  // забирає собі; вертикальне гортання, кілька пальців і текстові поля (там вбік рухають курсор) — не чіпаю. Разом із
+  // touch-action: pan-y і overscroll-behavior: none у стилях.
+  (function () {
+    var x0 = 0, y0 = 0, dir = 2;                       // 0 — ще не ясно, 1 — вбік (забираю), 2 — не чіпаю
+    try {
+      document.addEventListener('touchstart', function (e) {
+        var t = e.touches && e.touches.length === 1 ? e.touches[0] : null;
+        dir = t && !(e.target && e.target.tagName === 'TEXTAREA') ? 0 : 2;
+        if (t) { x0 = t.clientX; y0 = t.clientY; }
+      }, {passive: true});
+      document.addEventListener('touchmove', function (e) {
+        if (dir === 2 || !e.touches || e.touches.length !== 1) return;
+        var dx = Math.abs(e.touches[0].clientX - x0), dy = Math.abs(e.touches[0].clientY - y0);
+        if (!dir && (dx > 8 || dy > 8)) dir = dx > dy ? 1 : 2;
+        if (dir === 1 && e.cancelable) e.preventDefault();
+      }, {passive: false});
+    } catch (e) {}
+  })();
+
   var P, items = [], team = Object.create(null), order = [], today = '', maxDay = '';
   try {
     P = decodeData();
@@ -287,7 +332,9 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       TG.disableVerticalSwipes();
     }
   } catch (e) {}
-  today = isoOk(P.td) ? P.td : new Date().toISOString().slice(0, 10);
+  // Справжній день календаря (не 30.02, не рік 0099, який Date.UTC читає як 1999) — рецензія безпеки DISP-24.
+  function realDay(s) { return isoOk(s) && s >= '2000-01-01' && s <= '2199-12-31' && plusDays(s, 0) === s; }
+  today = realDay(P.td) ? P.td : new Date().toISOString().slice(0, 10);
   maxDay = plusDays(today, 366);
   (Array.isArray(P.tm) ? P.tm : []).slice(0, 200).forEach(function (p) {
     if (Array.isArray(p) && /^[a-z][a-z0-9_]{1,23}$/.test(p[0]) && typeof p[1] === 'string') {
@@ -356,29 +403,37 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   function changed(it) {
     return it.w !== it.w0 || it.d !== it.d0 || it.t.trim() !== it.t0;
   }
-  function haptic() {
-    try { if (TG && TG.HapticFeedback && TG.isVersionAtLeast && TG.isVersionAtLeast('6.1')) TG.HapticFeedback.selectionChanged(); } catch (e) {}
+  // TASK-DISP-24 (1а): вібрації немає — кожен дотик не повинен ще й звертатися до Telegram (вікно з 27.10 зникало на 6–8-й задачі).
+
+  // TASK-DISP-24: правка не перебудовується, але рядок задачі над нею міняє висоту (зникає «❓ до коли», з'являється
+  // «змінено», ховається фраза DISP-19) — і календар з'їжджав би з-під пальця. Повертаю сторінку на ту саму різницю.
+  // Де браузер сам тримає видиме на місці (Chromium, scroll anchoring), різниця вже ≈ 0 — нічого не роблю.
+  function steady(node, f) {
+    var y0 = null;
+    try { y0 = node.getBoundingClientRect().top; } catch (e) {}
+    f();
+    try {
+      var dy = y0 === null ? 0 : node.getBoundingClientRect().top - y0;
+      if (Math.abs(dy) >= 1) window.scrollBy(0, dy);
+    } catch (e) {}
   }
 
-  // Марго 06.10 (iPhone): «не працює кнопка строку, немає календарика» — торкнулась «❓ до коли» / «Строк: ?», а вони
-  // не були кнопками. Тепер — відкривають правку саме цієї задачі й календар (showPicker у тому самому дотику; старіший
-  // iOS — фокус і підсвітка поля). Правка (it.ed) створюється один раз і НЕ перебудовується при зміні: інакше поле дати
-  // зникало б з-під відкритого календаря на першій же зміні значення.
+  // Марго 06.10 (iPhone): «не працює кнопка строку, немає календарика» — «❓ до коли» / «Строк: ?» відкривають правку
+  // саме цієї задачі. TASK-DISP-24 (D260, 27.10): рідний календар iOS у Mini App складався, дату обирала по 2–3 рази, а раз
+  // разом із ним зникло все вікно. Тепер і дата, і «Кому» — свої кнопки на сторінці (dateBox, whoBox): правку відкрито й один
+  // раз прокручено до блоку, без фокуса й рідних вікон вибору; фокус — лише в текст «Що зробити» (клавіатура там і потрібна).
+  // Правка (it.ed) створюється один раз і НЕ перебудовується при зміні.
   function openEdit(it, what) {
     it.open = true;
     render(it);
-    var tgt = what === 'who' ? it.sel : what === 'text' ? it.ta : (it.dt.disabled ? it.cb : it.dt);
+    var tgt = what === 'who' ? it.who.root : what === 'text' ? it.ta : it.cal.root;
+    if (what === 'date') it.cal.show(inRange(it.d) ? it.d : today);   // місяць обраного дня (гортала деінде — назад)
     try { tgt.scrollIntoView({block: 'center'}); } catch (e) {}
-    try { tgt.focus({preventScroll: true}); } catch (e) { try { tgt.focus(); } catch (e2) {} }
-    var shown = false;
-    if (tgt === it.dt && typeof tgt.showPicker === 'function') {
-      try { tgt.showPicker(); shown = true; } catch (e) {}
+    if (what === 'text') {
+      try { tgt.focus({preventScroll: true}); } catch (e) { try { tgt.focus(); } catch (e2) {} }
     }
-    if (!shown) {
-      tgt.classList.add('pick');
-      setTimeout(function () { tgt.classList.remove('pick'); }, 1800);
-    }
-    haptic();
+    tgt.classList.add('pick');
+    setTimeout(function () { tgt.classList.remove('pick'); }, 1800);
   }
 
   function render(it) {
@@ -451,56 +506,168 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     if (it.row && it.row.parentNode === c) c.replaceChild(row, it.row); else c.insertBefore(row, c.firstChild);
     it.row = row;
     if (!it.ed) { it.ed = editor(it); c.appendChild(it.ed); }
+    it.who.paint(); it.cal.paint();                    // кнопки «Кому» й календар — лише перефарбувати
     it.warnEl.textContent = 'Щоб поставити, оберіть: ' + missing(it).join(', ') + '.';
     return c;
   }
 
+  // TASK-DISP-24 (D260): свій календар замість рідного поля дати iOS. Угорі — швидкі кнопки (сьогодні, завтра, найближчі
+  // пт і пн, +тиждень; збіглися дати — лишається одна), під ними — місяць кнопками днів, лише today … maxDay (як рушій,
+  // aw_check). Будується один раз разом із правкою; зміна дати чи місяця лише переписує кнопки — 6 рядків днів завжди,
+  // стрілки на місці, тож розмітка під пальцем не міняється. Обраний день — у it.d, як і було; «без строку» — прапорець,
+  // а день, обраний при ньому, знімає його (одним дотиком, а не двома).
+  var MON = ['січень', 'лютий', 'березень', 'квітень', 'травень', 'червень', 'липень', 'серпень', 'вересень', 'жовтень',
+             'листопад', 'грудень'];
+  function ymd(s) { var p = s.split('-'); return [+p[0], +p[1] - 1, +p[2]]; }
+  function isoOf(y, m, d) { return new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10); }
+  function inRange(s) { return realDay(s) && s >= today && s <= maxDay; }
+  function quickDays() {
+    var w = new Date(Date.UTC.apply(null, ymd(today))).getUTCDay(), seen = {}, out = [];
+    var mon = plusDays(today, (8 - w) % 7 || 7), fri = plusDays(today, (12 - w) % 7), wk = plusDays(today, 7);
+    // Порядок — хто лишається, коли дні збіглися: пт сьогодні чи завтра, пн завтра, у пн «+тиждень» = пн.
+    [['Сьогодні', today], ['Завтра', plusDays(today, 1)], [dlabel(mon), mon], [dlabel(fri), fri],
+     ['+тиждень · ' + dlabel(wk), wk]].forEach(function (q) {
+      if (seen[q[1]] || !inRange(q[1])) return;
+      seen[q[1]] = 1;
+      out.push(q);
+    });
+    return out.sort(function (a, b) { return a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0; });
+  }
+  function dateBox(it) {
+    var box = el('div', 'cal'), head = el('div', 'dhead'), cap = el('label', null, 'Строк'), q = el('div', 'qk');
+    var hd = el('div', 'chd'), g = el('div', 'cg'), qb = [], cells = [], last = inRange(it.d) ? it.d : '';
+    var t0 = ymd(today), t1 = ymd(maxDay), lo = t0[0] * 12 + t0[1], hi = t1[0] * 12 + t1[1], vm = lo;
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', 'Строк задачі ' + it.n);
+    var nl = el('label', 'nodl'), cb = document.createElement('input');
+    cb.type = 'checkbox';
+    nl.appendChild(cb); nl.appendChild(document.createTextNode('без строку'));
+    head.appendChild(cap); head.appendChild(nl);
+    box.appendChild(head);
+    function pick(d) {                                 // d — день (ISO), '-' (без строку) або '' (не обрано)
+      steady(box, function () { it.d = d; recheck(it); });   // recheck → render → paint
+      keep(it);
+    }
+    quickDays().forEach(function (x) {
+      var b = el('button', null, x[0]);
+      b.type = 'button';
+      b.setAttribute('data-d', x[1]);
+      b.setAttribute('aria-label', x[0].indexOf(dlabel(x[1])) >= 0 ? x[0] : x[0] + ', ' + dlabel(x[1]));
+      b.addEventListener('click', function () { show(x[1]); pick(x[1]); });
+      q.appendChild(b); qb.push(b);
+    });
+    box.appendChild(q);
+    var prev = el('button', null, '‹'), mt = el('div', 'mt'), next = el('button', null, '›');
+    prev.type = 'button'; next.type = 'button';
+    mt.setAttribute('aria-live', 'polite');
+    prev.setAttribute('aria-label', 'Попередній місяць');
+    next.setAttribute('aria-label', 'Наступний місяць');
+    prev.addEventListener('click', function () { if (vm > lo) { vm--; draw(); } });   // місяць — лише кнопками, без змахів
+    next.addEventListener('click', function () { if (vm < hi) { vm++; draw(); } });
+    hd.appendChild(prev); hd.appendChild(mt); hd.appendChild(next);
+    box.appendChild(hd);
+    ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'нд'].forEach(function (w) { g.appendChild(el('div', 'wd', w)); });
+    for (var i = 0; i < 42; i++) {
+      (function (b) {
+        b.type = 'button';
+        b.addEventListener('click', function () { var d = b.getAttribute('data-d'); if (inRange(d)) pick(d); });
+        g.appendChild(b); cells.push(b);
+      })(el('button'));
+    }
+    box.appendChild(g);
+    cb.addEventListener('change', function () {
+      var back = last;                                 // строк асистента людині не повертаю (D208, рецензія безпеки DISP-24)
+      if (it.f.indexOf('p') >= 0 && !mine(it.w) && back === it.d0) back = '';
+      pick(cb.checked ? '-' : back);
+    });
+    function show(d) {                                 // місяць, де цей день
+      if (!inRange(d)) return;
+      var p = ymd(d);
+      vm = p[0] * 12 + p[1];
+      draw();
+    }
+    function draw() {
+      vm = Math.max(lo, Math.min(hi, vm));
+      var y = Math.floor(vm / 12), m = vm % 12;
+      var lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7, n = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+      mt.textContent = MON[m] + ' ' + y;
+      prev.disabled = vm <= lo; next.disabled = vm >= hi;
+      cells.forEach(function (b, k) {
+        var day = k - lead + 1, d = day >= 1 && day <= n ? isoOf(y, m, day) : '';
+        b.textContent = d ? String(day) : '';
+        b.setAttribute('data-d', d);
+        b.disabled = !inRange(d);
+        b.setAttribute('aria-label', d ? dlabel(d) + '.' + y : '');
+        b.setAttribute('aria-hidden', d ? 'false' : 'true');
+        if (d === today) b.setAttribute('aria-current', 'date'); else b.removeAttribute('aria-current');
+      });
+      paint();
+    }
+    function paint() {
+      if (it.d !== '-') last = inRange(it.d) ? it.d : '';   // «без строку» знято — повертаю день, що був до нього
+      cb.checked = it.d === '-';
+      cap.textContent = inRange(it.d) ? 'Строк: ' + dlabel(it.d) : 'Строк';
+      qb.concat(cells).forEach(function (b) {
+        var d = b.getAttribute('data-d'), on = d === it.d && inRange(d);   // минулий строк — «❓ строк минув», не виділяю
+        b.className = [d ? '' : 'e', d && d === today ? 'td' : '', on ? 'on' : ''].join(' ').replace(/\s+/g, ' ').trim();
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    if (inRange(it.d)) show(it.d); else draw();
+    return {root: box, paint: paint, show: show};
+  }
+
+  // TASK-DISP-24 (1а): «Кому» — свої кнопки замість <select> (рідне колесо iOS — така сама спливайка поверх вікна, як
+  // календар). Порядок — як був у списку: як назвали на нараді (примітка) і кандидати першими, далі решта команди,
+  // «Марго (собі)», Асистент. Обраний — виділений; зміна лише перефарбовує кнопки.
+  function whoBox(it) {
+    var box = el('div', 'who'), list = el('div', 'wl'), bs = [], seen = {};
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', 'Кому задача ' + it.n);
+    box.appendChild(el('label', null, 'Кому'));
+    if (it.said && !it.w0) box.appendChild(el('div', 'note', 'На нараді / у диктовці: «' + it.said + '»'));
+    it.cand.concat(order, ['owner'], ASST ? [ASST] : []).forEach(function (k) {
+      if (seen[k] || !team[k]) return;
+      seen[k] = 1;
+      var b = el('button', null, team[k]);
+      b.type = 'button';
+      b.addEventListener('click', function () { pickWho(k); });
+      list.appendChild(b); bs.push([k, b]);
+    });
+    box.appendChild(list);
+    function pickWho(k) {
+      steady(box, function () {
+        it.w = k;
+        // Строк, який запропонував асистент, — лише для її власної (D208): людині — лише дата, яку обрала вона.
+        if (it.f.indexOf('p') >= 0 && !mine(it.w) && it.d === it.d0) it.d = '';
+        else if (it.f.indexOf('p') >= 0 && mine(it.w) && !it.d) it.d = it.d0;   // знову її — мій строк
+        recheck(it);
+      });
+      keep(it);
+    }
+    function paint() {
+      bs.forEach(function (x) {
+        var on = x[0] === it.w;
+        x[1].className = on ? 'on' : '';
+        x[1].setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    paint();
+    return {root: box, paint: paint};
+  }
+
   function editor(it) {
     var ed = el('div', 'ed');
-    ed.appendChild(el('label', null, 'Кому'));
-    var sel = document.createElement('select');
-    sel.appendChild(new Option('— оберіть —', ''));
-    var keys = it.cand.concat(order.filter(function (k) { return it.cand.indexOf(k) < 0; }));
-    keys.forEach(function (k) { sel.appendChild(new Option(team[k], k)); });
-    sel.appendChild(new Option(team.owner, 'owner'));
-    if (ASST) sel.appendChild(new Option(team.asst, ASST));
-    sel.value = it.w;
-    sel.addEventListener('change', function () {
-      it.w = sel.value;
-      // Строк, який запропонував асистент, — лише для її власної (D208): людині — лише дата, яку обрала вона.
-      if (it.f.indexOf('p') >= 0 && !mine(it.w) && it.d === it.d0) { it.d = ''; dt.value = ''; }
-      else if (it.f.indexOf('p') >= 0 && mine(it.w) && !it.d) { it.d = it.d0; dt.value = it.d0; }   // знову її — мій строк
-      recheck(it);
-      keep(it, true);
-    });
-    ed.appendChild(sel);
-    if (it.said && !it.w0) ed.appendChild(el('div', 'note', 'На нараді / у диктовці: «' + it.said + '»'));
-
-    ed.appendChild(el('label', null, 'Строк'));
-    var line = el('div', 'line');
-    var dt = document.createElement('input');
-    dt.type = 'date'; dt.min = today; dt.max = maxDay;
-    if (isoOk(it.d)) dt.value = it.d;
-    var nl = el('label', 'nodl'), cb = document.createElement('input');
-    cb.type = 'checkbox'; cb.checked = it.d === '-';
-    dt.disabled = cb.checked;
-    nl.appendChild(cb); nl.appendChild(document.createTextNode('без строку'));
-    it.sel = sel; it.dt = dt; it.cb = cb;
-    dt.addEventListener('change', function () { it.d = isoOk(dt.value) ? dt.value : ''; recheck(it); keep(it, true); });
-    cb.addEventListener('change', function () {
-      dt.disabled = cb.checked;
-      it.d = cb.checked ? '-' : (isoOk(dt.value) ? dt.value : '');
-      recheck(it);
-      keep(it, true);
-    });
-    line.appendChild(dt); line.appendChild(nl);
-    ed.appendChild(line);
+    it.who = whoBox(it);
+    ed.appendChild(it.who.root);
+    it.cal = dateBox(it);
+    ed.appendChild(it.cal.root);
 
     ed.appendChild(el('label', null, 'Що зробити'));
     var ta = document.createElement('textarea');
     ta.maxLength = Math.min(500, Math.max(300, it.t0.length)); ta.value = it.t;
     ta.addEventListener('input', function () { it.t = ta.value; keep(it); });
-    ta.addEventListener('change', function () { recheck(it); keep(it, true); });
+    ta.addEventListener('change', function () { recheck(it); keep(it); });
     ed.appendChild(ta);
     it.ta = ta;
 
@@ -508,7 +675,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var zz = document.createElement('textarea');
     zz.maxLength = 200; zz.value = it.z; zz.placeholder = 'Необов\'язково';
     zz.addEventListener('input', function () { it.z = zz.value; count(); keep(it); });
-    zz.addEventListener('change', function () { render(it); keep(it, true); });
+    zz.addEventListener('change', function () { render(it); keep(it); });
     ed.appendChild(zz);
     it.zz = zz;
     ed.appendChild(el('div', 'note', 'З ✓ — піде людині разом із задачею. З ✗ — Асистентові до відома, чому не ставите.'));
@@ -538,9 +705,8 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       it.bad = false; it.dec = dec;
       if (dec !== null) it.open = false;
     }
-    haptic();
     render(it); count();
-    keep(it, true);
+    keep(it);
     if (it.bad) it.card.scrollIntoView({block: 'nearest', behavior: 'smooth'});
   }
 
@@ -577,20 +743,26 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var btn = $('send');
     btn.disabled = !any || size > 4096;
     btn.textContent = size > 4096 ? 'Забагато тексту — скоротіть правки' : 'Готово — надіслати';
-    try {
-      if (TG && TG.isVersionAtLeast && TG.isVersionAtLeast('6.2')) {
-        if (any) TG.enableClosingConfirmation(); else TG.disableClosingConfirmation();
-      }
-    } catch (e) {}
+    // TASK-DISP-24 (1а): до Telegram — лише коли «є що надсилати» змінилось, а не на кожен дотик і літеру.
+    if (any !== ARMED) {
+      ARMED = any;
+      try {
+        if (TG && TG.isVersionAtLeast && TG.isVersionAtLeast('6.2')) {
+          if (any) TG.enableClosingConfirmation(); else TG.disableClosingConfirmation();
+        }
+      } catch (e) {}
+    }
     return {y: y, n: n, w: w, body: body, size: size};
   }
+  var ARMED = false;                                   // підтвердження закриття в Telegram зараз увімкнено
 
   function send() {
     var c = count();
     if (c.size > 4096) return;
     if (IN_TG && typeof TG.sendData === 'function') {
       dropDraft(false);                                // DISP-22: рішення пішли — чернетку цього вікна прибрати (до sendData:
-      try { TG.disableClosingConfirmation(); } catch (e) {}   // вікно після нього закривається)
+      ARMED = false;                                   // вікно після нього закривається)
+      try { TG.disableClosingConfirmation(); } catch (e) {}
       TG.sendData(c.body);
       return;
     }
@@ -610,7 +782,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     }
   });
   $('gen').addEventListener('input', function () { count(); keepR(); });
-  $('gen').addEventListener('change', function () { keepR(true); });
+  $('gen').addEventListener('change', function () { keepR(); });
 
   // TASK-DISP-20 (доповнення Марго 12.10: «щоб я взагалі видалила нараду, з якою я не хочу ставити задачі»): одна кнопка
   // внизу, підтвердження — тут же, у вікні. Боту — «x»: N (скільки задач вона бачила в питанні) без рішень по пунктах:
@@ -628,6 +800,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     if (bytes(body) > 4096) return;
     if (IN_TG && typeof TG.sendData === 'function') {
       dropDraft(true);                                 // DISP-22: нараду видалено — чернетку всього показу прибрати
+      ARMED = false;
       try { TG.disableClosingConfirmation(); } catch (e) {}
       TG.sendData(body);
       return;
@@ -643,7 +816,6 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
         ' наради ' + DM + '? Нічого не буде поставлено.';
       $('delbtn').hidden = true;
       $('delask').hidden = false;
-      haptic();
       try { $('delask').scrollIntoView({block: 'center', behavior: 'smooth'}); } catch (e) {}
     });
     $('delno').addEventListener('click', function () { $('delask').hidden = true; $('delbtn').hidden = false; });
@@ -656,7 +828,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   // показ + номер пункту (не підпис частини: частини можуть бути перерізані). Пункт, змінений рушієм після чернетки (кому /
   // строк / текст), — не відновлюю й кажу. Після «Готово» — чернетку цього вікна прибираю; чужі давніші за 14 днів — при
   // відкритті. Сховища немає чи не відповідає — вікно працює, як раніше. Боту (sendData) — те саме, що й без чернетки.
-  var DK = 'aw1-', DDAYS = 14, DRAFT = null, dkeys = [], rTouched = false, rSaved = false, rTm = null;
+  var DK = 'aw1-', DDAYS = 14, DRAFT = null, dkeys = [], rTouched = false, rSaved = false;
   var SENT = 0;                                       // 1 — «Готово» натиснуто, 2 — «Видалити нараду»: далі нічого не пишу
   var OURS = /^aw1-[A-Za-z0-9_]{1,110}-(?:\d{1,4}|r\d{1,4})$/;
   var DPRE = DK + P.id.replace(/[^A-Za-z0-9]/g, function (c) { return '_' + c.charCodeAt(0).toString(16) + '_'; }) + '-';
@@ -777,42 +949,56 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       at: function (k) { return idx && typeof idx[k] === 'number' ? idx[k] : 0; }
     };
   }
+  // TASK-DISP-24 (1а): кожен запис у сховище — звернення до Telegram, тож пишу пачкою: не частіше ніж раз на FGAP на все
+  // вікно, пункт, що не змінився з минулого запису, — не пишу. Перед «Готово», при згортанні й закритті вікна — одразу.
+  // Формат ключів і значень — той самий (DISP-22), чернетки, записані старою сторінкою, читаються.
+  var DIRTY = [], rDirty = false, rLast = '', FT = null, FLAST = 0, FGAP = 1000;
+  function bare(v) { return v.replace(/^\{"a":\d+,/, '{'); }   // значення без часу запису — щоб звірити з минулим
   function saveItem(it) {
-    clearTimeout(it.tm);
-    it.tm = null;
     if (!DRAFT || SENT) return;
     try {
       var v = itemDraft(it);
-      if (v) { DRAFT.set(ikey(it.n), v); it.saved = true; }
-      else if (it.saved) { DRAFT.del([ikey(it.n)]); it.saved = false; }
+      if (v) {
+        if (bare(v) !== it.sv) { DRAFT.set(ikey(it.n), v); it.sv = bare(v); }
+        it.saved = true;
+      } else if (it.saved) { DRAFT.del([ikey(it.n)]); it.saved = false; it.sv = ''; }
     } catch (e) {}
   }
-  function keep(it, now) {                            // кожна зміна — у чернетку (текст — коли вона на мить зупинилась)
-    it.touched = true;
-    clearTimeout(it.tm);
-    it.tm = now ? null : setTimeout(function () { saveItem(it); }, 400);
-    if (now) saveItem(it);
-  }
   function saveR() {
-    clearTimeout(rTm);
-    rTm = null;
     if (!DRAFT || SENT) return;
     try {
       var r = $('gen').value.trim();
-      if (r && !secretish(r)) { DRAFT.set(RKEY, JSON.stringify({a: Date.now(), r: r})); rSaved = true; }
-      else if (rSaved) { DRAFT.del([RKEY]); rSaved = false; }
+      if (r && !secretish(r)) {
+        if (r !== rLast) { DRAFT.set(RKEY, JSON.stringify({a: Date.now(), r: r})); rLast = r; }
+        rSaved = true;
+      } else if (rSaved) { DRAFT.del([RKEY]); rSaved = false; rLast = ''; }
     } catch (e) {}
   }
-  function keepR(now) {
+  function flush() {
+    clearTimeout(FT);
+    FT = null;
+    if (!DRAFT || SENT) return;
+    FLAST = Date.now();
+    var list = DIRTY;
+    DIRTY = [];
+    list.forEach(saveItem);
+    if (rDirty) { rDirty = false; saveR(); }
+  }
+  function plan() {                                   // сховище ще не відповіло — запишу, щойно відповість (opened)
+    if (FT || !DRAFT || SENT) return;
+    FT = setTimeout(flush, Math.max(300, FLAST + FGAP - Date.now()));
+  }
+  function keep(it) {                                 // кожна зміна — у чернетку (пачкою, див. вище)
+    it.touched = true;
+    if (DIRTY.indexOf(it) < 0) DIRTY.push(it);
+    plan();
+  }
+  function keepR() {
     rTouched = true;
-    clearTimeout(rTm);
-    rTm = now ? null : setTimeout(saveR, 400);
-    if (now) saveR();
+    rDirty = true;
+    plan();
   }
-  function flushAll() {
-    items.forEach(function (it) { if (it.tm) saveItem(it); });
-    if (rTm) saveR();
-  }
+  function flushAll() { if (FT || DIRTY.length || rDirty) flush(); }
   function dropKeys(s, all) {                         // ключі цього вікна (all — і всього показу) — геть
     var keys = items.map(function (it) { return ikey(it.n); }).concat([RKEY]);
     if (all) dkeys.forEach(function (k) { if (k.indexOf(DPRE) === 0 && keys.indexOf(k) < 0) keys.push(k); });
@@ -822,21 +1008,20 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     // Перед sendData: рішення пішли — чернетку цього вікна (all — всього показу) прибрати; далі нічого не пишу. Сховище
     // ще не відповіло — прибере, щойно відповість (tryStore), і нічого з цього вікна вже не запише (рецензія безпеки, Д3).
     SENT = all ? 2 : 1;
-    items.forEach(function (it) { clearTimeout(it.tm); it.tm = null; });
-    clearTimeout(rTm);
+    clearTimeout(FT);
+    FT = null; DIRTY = []; rDirty = false;
     if (DRAFT) dropKeys(DRAFT, all);
     DRAFT = null;
   }
   function applyDraft(it, x) {
     if ('w' in x) it.w = typeof x.w === 'string' && (x.w === '' || team[x.w]) ? x.w : '';
-    if ('d' in x) it.d = typeof x.d === 'string' && (x.d === '-' || (isoOk(x.d) && x.d >= today && x.d <= maxDay)) ? x.d : '';
+    if ('d' in x) it.d = x.d === '-' || inRange(x.d) ? x.d : '';
     else if ('w' in x && it.f.indexOf('p') >= 0 && !mine(it.w)) it.d = '';   // строк асистента — лише її задачі (D208)
     if (typeof x.t === 'string') it.t = x.t.slice(0, it.ta ? it.ta.maxLength : 500);
     if (typeof x.z === 'string') it.z = x.z.slice(0, 200);
     if (x.c === 1 || x.c === 0) it.dec = x.c;
     if (it.dec === 1 && !complete(it)) it.dec = null;
-    if (it.sel) it.sel.value = it.w;
-    if (it.dt) { it.dt.value = isoOk(it.d) ? it.d : ''; it.cb.checked = it.d === '-'; it.dt.disabled = it.cb.checked; }
+    if (it.cal) it.cal.show(it.d);                     // календар — на місяць відновленого дня (render перефарбує)
     if (it.ta) it.ta.value = it.t;
     if (it.zz) it.zz.value = it.z;
     it.saved = true;
@@ -901,9 +1086,10 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
       items.forEach(function (it) {
         if (!it.touched) return;
         it.saved = have.indexOf(ikey(it.n)) >= 0;
-        saveItem(it);
+        if (DIRTY.indexOf(it) < 0) DIRTY.push(it);
       });
-      if (rTouched) { rSaved = have.indexOf(RKEY) >= 0; saveR(); }
+      if (rTouched) { rSaved = have.indexOf(RKEY) >= 0; rDirty = true; }
+      flush();
     });
   }
   function tryStore(s, next) {
