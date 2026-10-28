@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-Dt2aNtvLZd8R3Yx8lLEnjQqVgUG6ikFcGTJdkWM07SY='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-VaE9DHFvFhBlbj/un3URlBVgg+zipqRD5sJprBXOH20='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
@@ -861,21 +861,74 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   // вдруге (рецензія коду DISP-22, Д4).
   var RKEY = DPRE + 'r' + (items.length ? items[0].n : 0);
   // Схоже на пароль, код із SMS, картку чи ключ — у сховище не кладу (рушій такого й так не прийме). Класи — як
-  // secret_kind (hermes-textclean), але обережніше: слово «пароль» і без значення. Без lookbehind (iOS < 16.4 його не знає),
-  // невидимі символи — геть до перевірки (рецензія безпеки DISP-22, Д1).
-  var INVIS = new RegExp('[' + [0xad, 0x180e, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e,
-    0x2060, 0x2061, 0x2062, 0x2063, 0x2064, 0xfeff].map(function (k) { return String.fromCharCode(k); }).join('') + ']', 'g');
-  var WB = '(?:^|[^0-9A-Za-zА-ЯҐЄІЇа-яґєії])', WE = '(?=$|[^0-9A-Za-zА-ЯҐЄІЇа-яґєії])';
+  // secret_kind (hermes-textclean), але обережніше: слово «пароль» і без значення. Без lookbehind (iOS < 16.4 його не знає).
+  // Текст спершу чищу так само, як strip_hidden рушія (NFC, ті самі приховані символи, варіанти емодзі не після емодзі,
+  // керівні — пробіл), а ще U+0085 — пробіл і нелатинські цифри — «0» (у Python це \s і \d): інакше сторінка була б м'якшою
+  // за рушій (рецензії безпеки DISP-22, Д1; TD-1, Д2).
+  // TD-1: «код форми 1301», «код рядка 1012», «код звіту за 2026», «код 2026 р.» — реквізити звітності, не код із SMS: як
+  // _report_code рушія (S_SMS — перша частина SMS_RX, «смс-код …» — S_RX[2]; S_CODE = CODE_ANY; REP / REP_MORE / S_NEAR /
+  // S_AFTER / S_YEAR_AFTER — ті самі слова; U+0130, U+0131, U+017F, U+212A — як i, i, s, k у Python з re.I). Межі слів у винятках — не ширші, ніж у Python (\w): інакше сторінка м'якша. Той самий корпус
+  // фраз — tests/td1_code_corpus.json (тут і в рушії), паритет на шаблонах — tests/td1_parity.js.
+  var HIDE = new RegExp('[\\u00ad\\u061c\\u180e\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff\\ufe00-\\ufe0d' +
+    '\\u034f\\u2800\\u115f\\u1160\\u3164\\uffa0\\u180b-\\u180d\\u180f\\u17b4\\u17b5]|\\udb40[\\udc00-\\udc7f\\udd00-\\uddef]', 'g');
+  var NDIG;
+  try { NDIG = new RegExp('(?![0-9])\\p{Nd}', 'gu'); } catch (e) { NDIG = new RegExp('[\\u0660-\\u0669\\u06f0-\\u06f9\\u0966-\\u096f\\uff10-\\uff19]', 'g'); }
+  var WB = '(?:^|[^0-9A-Za-zА-ЯҐЄІЇа-яґєії])', WE = '(?=$|[^0-9A-Za-zА-ЯҐЄІЇа-яґєії])', LW = '[0-9A-Za-z_А-ЯҐЄІЇЁа-яґєіїё]*';
+  var XE = '(?=$|[\\s.,;:!?()\\[\\]«»"\'„“”‘’/—–-])';
   var S_RX = [
     new RegExp(WB + '(?:парол|пасворд|password|passwd)', 'i'),
     new RegExp(WB + '(?:pass|пасс|pwd|pin|пін|пин|cvv|cvc)(?:-?код[а-яґєії]*)?' + WE, 'i'),
-    /(?:смс|sms)[-\s]*(?:код|code)[а-яґєії]*\s*[:\-—=]?\s*\d{4,8}/i,
-    new RegExp(WB + '(?:код|коду|кодом|коди|code)\\s*(?:(?:з|із|из|from)\\s*)?(?:(?:смс|sms|повідомлення|сообщения)\\s*)?' +
-      '[:\\-—=]\\s*\\d{4,8}' + WE, 'i'),
+    new RegExp('(?:смс|sms)[-\\s]*(?:код|code)[^\\s\\d]*\\s*[:\\-—=]?\\s*\\d{4,8}', 'i'),
     /sk-[A-Za-z0-9_-]{20,}|\d{8,10}:[A-Za-z0-9_-]{35}|gh[pousr]_[A-Za-z0-9]{30,}|AIza[0-9A-Za-z_-]{30,}|eyJ[\w-]{10,}\.[\w-]{10,}|BEGIN [A-Z ]*PRIVATE KEY/
   ];
-  var S_CODE = new RegExp(WB + '(?:код|коду|кодом|коди|кодів|code|otp)\\s+((?:[^\\s\\d]+\\s+){0,3})(\\d{4,8})(?![\\d.,])', 'gi');
+  var S_SMS = new RegExp(WB + '((?:код|коду|кодом|коди|code)\\s*(?:з|із|из|from)?\\s*(?:смс|sms|повідомлення|сообщения)?\\s*' +
+    '[:\\-—=]?\\s*(\\d{4,8}))' + WE, 'gi');
+  var S_PLAIN = /^(?:код|коду|кодом|коди|code)\s+(\d{4,8})$/i;
+  var S_CODE = new RegExp(WB + '((?:код|коду|кодом|коди|кодів|code|otp)\\s+((?:[^\\s\\d]+\\s+){0,3})(\\d{4,8}))(?![\\d.,])', 'gi');
   var S_REG = /єдрпоу|едрпоу|edrpou|квед|рнокпп|іпн|инн|ипн|ipn|iban|рахунк|счет|счёт|договор|ттн|накладн|поштов|почтов|індекс|индекс|країн|стран|товар|уктзед|мфо|клієнт|клиент|регіон|регион|області|области|міста|города|телефон/i;
+  var REP = 'форм(?:а|и|і|у|ою|ах|ам|ами|ы|е|ой)?|рядок|рядк' + LW + '|строк(?:а|и|е|у|ой|ам|ах)?|звіт' + LW + '|отч[её]т' + LW +
+    '|декларац' + LW + '|граф(?:а|и|і|у|ою|ах|ам|ы|е|ой)?|колонк' + LW + '|стовпц' + LW + '|стовпчик' + LW + '|столбц' + LW +
+    '|кбк|кекв|кпкв|кфкв|бюджетн' + LW + '|класифік' + LW + '|классифик' + LW + '|укт\\s*зед|катоттг|коатуу|дкуд|копфг' +
+    '|пільг' + LW + '|льгот' + LW;
+  var REP_MORE = 'за|по|№|у|в|—|–|-|додат(?:ок|ка|ку|ки|ків|ках|кам|ком)|приложени' + LW + '|єсв|есв|пдв|ндс|пдфо|ндфл';
+  var S_REPORT = new RegExp('(?:^|\\s)(?:' + REP + ')(?=[:,]?(?:\\s|$))', 'i');   // слова вже з переліку — межа = пробіл
+  var S_REPORT_ALL = new RegExp('^(?:(?:' + REP + '|' + REP_MORE + ')[:,]?\\s+)*$', 'i');   // «Код форми: 1301»
+  var NEAR_STRONG = 'смс' + LW + '|sms' + LW + '|otp|2fa|нікому|никому|парол' + LW + '|пасворд' + LW + '|password' + LW +
+    '|passwd|вх[іо]д(?:у|ом|і|а|е)?|логін(?:у|ом|а)?|логин(?:а|у|ом)?|login';
+  var S_NEAR = new RegExp(WB + '(?:' + NEAR_STRONG + '|ваш|вашого|вашому|вашим|ваші|ваших|твій|твого|твоєму|твоїм|твої|твоїх' +
+    '|мій|мого|моєму|моїм|мої|моїх|твой|твоего|мой|моего|your|my|одноразов(?:ий|ого|ому|им|і|их|ый|ые|ых)' +
+    '|тимчасов(?:ий|ого|ому|им|і|их)|временн(?:ый|ого|ому|ым|ые|ых)|підтвердженн' + LW + '|подтвержден' + LW +
+    '|confirmation|авторизац' + LW + '|автентифікац' + LW + '|аутентифікац' + LW + '|аутентификац' + LW +
+    '|authenticat' + LW + '|authoriz' + LW + '|верифікац' + LW + '|верификац' + LW + '|verification' +
+    '|секрет(?:н' + LW + '|у|ом|и|ів)?|secrets?|pass|пасс|pwd|pin|пін|пин|cvv|cvc|bankid)' + WE, 'i');
+  var S_AFTER = new RegExp(WB + '(?:' + NEAR_STRONG + ')' + WE, 'i');
+  var S_YEAR_AFTER = new RegExp('^[^\\S\\n]*(?:(?:р|рр|г|гг)\\.?|рік|року|році|роки|год|года|году)' + XE, 'i');
+  function emojiBase(c) {                             // = _emoji_base рушія
+    return (c >= 0x1f000 && c <= 0x1faff) || (c >= 0x2600 && c <= 0x27bf) || (c >= 0x2b00 && c <= 0x2bff) ||
+      (c >= 0x2190 && c <= 0x21ff) || (c >= 0x2300 && c <= 0x23ff) || (c >= 0x25a0 && c <= 0x25ff) ||
+      [0xa9, 0xae, 0x203c, 0x2049, 0x2122, 0x2139, 0x3030, 0x303d, 0x3297, 0x3299].indexOf(c) >= 0 ||
+      (c >= 0x30 && c <= 0x39) || c === 0x23 || c === 0x2a;
+  }
+  function stripHidden(s) {                           // = strip_hidden рушія
+    s = String(s || '');
+    if (s.normalize) s = s.normalize('NFC');
+    s = s.replace(HIDE, '').replace(new RegExp('[\\ufe0e\\ufe0f]', 'g'), function (v, i, t) {
+      var c = i > 0 ? t.charCodeAt(i - 1) : -1, h = i > 1 ? t.charCodeAt(i - 2) : -1;
+      if (c >= 0xdc00 && c <= 0xdfff && h >= 0xd800 && h <= 0xdbff) c = (h - 0xd800) * 0x400 + (c - 0xdc00) + 0x10000;
+      return c >= 0 && emojiBase(c) ? v : '';
+    });
+    return s.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ' ');
+  }
+  var FOLD_I = new RegExp('[\\u0130\\u0131]', 'g'), FOLD_S = new RegExp('\\u017f', 'g'), FOLD_K = new RegExp('\\u212a', 'g');
+  function words(t) { return t.split(/\s+/).filter(Boolean); }
+  function reportCode(s, k, between, num, end) {      // = _report_code рушія: «код» на s[k..end] — реквізит звітності?
+    if (s.slice(k, k + 3).toLowerCase() === 'otp' || !S_REPORT_ALL.test(between)) return false;
+    var b = s.slice(0, k), a = s.slice(end), nl = a.indexOf('\n'), w = words(between);
+    if (words(b.slice(b.lastIndexOf('\n') + 1)).slice(-3).some(function (x) { return S_NEAR.test(x); }) ||
+        words(nl < 0 ? a : a.slice(0, nl)).slice(0, 3).some(function (x) { return S_AFTER.test(x); })) return false;
+    if (S_REPORT.test(between)) return true;
+    return /^(?:19|20)\d\d$/.test(num) && ((w.length > 0 && w[w.length - 1].toLowerCase() === 'за') || S_YEAR_AFTER.test(a));
+  }
   function luhn(d) {
     var s = 0;
     for (var i = 0; i < d.length; i++) {
@@ -886,14 +939,28 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     return s % 10 === 0;
   }
   function secretish(s) {
-    s = String(s || '').replace(INVIS, '');
+    s = stripHidden(s).replace(/\x85/g, ' ').replace(FOLD_I, 'i').replace(FOLD_S, 's').replace(FOLD_K, 'k');
+    NDIG.lastIndex = 0;
+    var nd = NDIG.test(s);                         // нелатинська цифра є — будь-які 13–19 цифр уже картка (Луна по «0» не порахувати)
+    NDIG.lastIndex = 0;
+    s = s.replace(NDIG, '0');
     if (!s) return false;
     if (S_RX.some(function (r) { return r.test(s); })) return true;
     var cards = s.replace(/[A-Z]{2}\d{2}(?: ?[A-Z0-9]){11,30}/gi, ' ').match(/(?:\d[ -]?){12,18}\d/g) || [];
-    if (cards.some(function (c) { var d = c.replace(/\D/g, ''); return d.length >= 13 && d.length <= 19 && luhn(d); })) return true;
-    var m;
+    if (cards.some(function (c) { var d = c.replace(/\D/g, ''); return d.length >= 13 && d.length <= 19 && (nd || luhn(d)); })) return true;
+    var m, e;
+    S_SMS.lastIndex = 0;
+    while ((m = S_SMS.exec(s))) {                    // «код 2026 р.» — рік; «код: 2026», «код з смс 2026» — секрет
+      var p = S_PLAIN.exec(m[1]);
+      e = m.index + m[0].length;
+      if (!(p && reportCode(s, e - m[1].length, '', p[1], e))) return true;
+    }
     S_CODE.lastIndex = 0;
-    while ((m = S_CODE.exec(s))) if (!S_REG.test(m[1] || '')) return true;
+    while ((m = S_CODE.exec(s))) {
+      if (S_REG.test(m[2] || '')) continue;
+      e = m.index + m[0].length;
+      if (!reportCode(s, e - m[1].length, m[2] || '', m[3], e)) return true;
+    }
     return false;
   }
   function ikey(n) { return DPRE + n; }
