@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-rv5sI6UAclOkxC4rdyJ7uI4pBEowvS1d69zYFYCdZ6Y='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-Dt2aNtvLZd8R3Yx8lLEnjQqVgUG6ikFcGTJdkWM07SY='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
@@ -13,7 +13,9 @@
      TASK-DISP-22 (D258): змах униз вікна не закриває; позначки — чернеткою в сховищі Telegram (CloudStorage / DeviceStorage,
      не localStorage), наступне відкриття того самого показу — на місці.
      TASK-DISP-24 (D260): дата й «Кому» — свої кнопки на сторінці (без рідного календаря й колеса iOS); рух пальця вбік
-     сторінка забирає собі; до Telegram — лише потрібне (без вібрації, чернетка пачкою). -->
+     сторінка забирає собі; до Telegram — лише потрібне (без вібрації, чернетка пачкою).
+     TASK-DISP-25 (D263): чернетка не прибирається на «Готово» — лише коли рушій підтвердив, що прийняв (бот міг відмовити
+     вікну, відкритому зі старої кнопки). -->
 <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
 <style>
 :root{--f-bg:#fff;--f-text:#1c1c1e;--f-hint:#7c7c80;--f-card:#f1f1f5;--f-btn:#2481cc;--f-btn-text:#fff;--ok:#2e9d4f;--no:#d9453b;--warn:rgba(255,166,0,.22)}
@@ -252,6 +254,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     return e;
   }
   function str(x, n) { return typeof x === 'string' ? x.slice(0, n) : ''; }
+  function cnt(x) { return typeof x === 'number' && x > 0 && x < 1e7 && x === Math.floor(x) ? x : 0; }
   function isoOk(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s); }
   function dlabel(s) {
     if (!isoOk(s)) return '';
@@ -360,6 +363,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     // Строк асистента (f: p) рушій дає лише її задачі (D208); прийшов на чужій — не беру (рецензія безпеки DISP-24).
     if (it.f.indexOf('p') >= 0 && !mine(it.w0)) it.d0 = '';
     it.w = it.w0; it.t = it.t0; it.d = it.d0; it.z = ''; it.dec = null; it.own = mine(it.w0);
+    it.v = cnt(r.v);                                   // DISP-25: скільки разів рушій уже застосував її рішення до пункту
     items.push(it);
   });
   var info = (Array.isArray(P.ti) ? P.ti : []).slice(0, 30).filter(function (x) {
@@ -772,8 +776,8 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var c = count();
     if (c.size > 4096) return;
     if (IN_TG && typeof TG.sendData === 'function') {
-      dropDraft(false);                                // DISP-22: рішення пішли — чернетку цього вікна прибрати (до sendData:
-      ARMED = false;                                   // вікно після нього закривається)
+      sealDraft();                                     // DISP-25: чернетку НЕ прибираю — бот міг відмовити (дописую й більше
+      ARMED = false;                                   // не пишу; прибирається, коли рушій підтвердив, — див. restore)
       try { TG.disableClosingConfirmation(); } catch (e) {}
       TG.sendData(c.body);
       return;
@@ -811,7 +815,7 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     var body = JSON.stringify(o);
     if (bytes(body) > 4096) return;
     if (IN_TG && typeof TG.sendData === 'function') {
-      dropDraft(true);                                 // DISP-22: нараду видалено — чернетку всього показу прибрати
+      sealDraft();                                     // DISP-25: як і на «Готово» — бот міг не видалити (спитає про решту)
       ARMED = false;
       try { TG.disableClosingConfirmation(); } catch (e) {}
       TG.sendData(body);
@@ -838,10 +842,19 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   // (позначки жили лише в пам'яті сторінки). Тепер кожна зміна — одразу в сховище Telegram: CloudStorage (з 6.9), не
   // вийшло — DeviceStorage (з 9.0); НЕ сховище браузера (домен github.io спільний для її сторінок, рецензія М7). Ключ —
   // показ + номер пункту (не підпис частини: частини можуть бути перерізані). Пункт, змінений рушієм після чернетки (кому /
-  // строк / текст), — не відновлюю й кажу. Після «Готово» — чернетку цього вікна прибираю; чужі давніші за 14 днів — при
-  // відкритті. Сховища немає чи не відповідає — вікно працює, як раніше. Боту (sendData) — те саме, що й без чернетки.
+  // строк / текст), — не відновлюю й кажу. Чужі давніші за 14 днів — при відкритті. Сховища немає чи не відповідає —
+  // вікно працює, як раніше. Боту (sendData) — те саме, що й без чернетки.
+  // TASK-DISP-25 (D263): 27.10 бот відкинув рішення з вікна, відкритого до його відповіді, а чернетку сторінка вже прибрала
+  // перед sendData — «нічого не проставлено й не запам'яталося». Тепер на «Готово» чернетку лише дописую й більше не пишу;
+  // прибираю, коли рушій підтвердив: пункту вже немає серед тих, що чекають (P.wn), рушій застосував її рішення до пункту
+  // (лічильник v пункту більший, ніж у чернетці), зауваження до списку вже записано (його відбиток — у P.rh).
   var DK = 'aw1-', DDAYS = 14, DRAFT = null, dkeys = [], rTouched = false, rSaved = false;
-  var SENT = 0;                                       // 1 — «Готово» натиснуто, 2 — «Видалити нараду»: далі нічого не пишу
+  var SENT = 0;                                       // 1 — «Готово» чи «Видалити нараду» натиснуто: далі нічого не пишу
+  var WN = Array.isArray(P.wn) && P.wn.length <= 1000 && P.wn.every(function (n) { return cnt(n) > 0; }) ? P.wn : null;
+  var RH = (Array.isArray(P.rh) ? P.rh : []).filter(function (h) { return typeof h === 'string' && /^[0-9a-f]{16}$/.test(h); });
+  // Покази, які рушій нещодавно закрив (погоджено, видалено, вирішено словами): їхню чернетку прибираю, не читаючи (межа
+  // сховища — 1024 ключі; тексти видаленої наради не лежать тижнями — рецензії DISP-25).
+  var GX = (Array.isArray(P.gx) ? P.gx : []).filter(function (h) { return typeof h === 'string' && /^[0-9a-f]{8}$/.test(h); });
   var OURS = /^aw1-[A-Za-z0-9_]{1,110}-(?:\d{1,4}|r\d{1,4})$/;
   var DPRE = DK + P.id.replace(/[^A-Za-z0-9]/g, function (c) { return '_' + c.charCodeAt(0).toString(16) + '_'; }) + '-';
   // Зауваження до списку — цього вікна (за першим пунктом), не всього показу: в іншій частині воно не виринає й не йде
@@ -884,17 +897,20 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     return false;
   }
   function ikey(n) { return DPRE + n; }
-  function fp(it) {
-    // Відбиток пункту, яким його дав рушій: усе, що є в знімку пункту рушія (aw_snap) і видно на сторінці, — змінилось
-    // хоч щось (кому, строк, час, текст, результат, навіщо, «терміново», посилання, номер) — позначка з
-    // чернетки не переноситься (рецензія безпеки DISP-22, В1). Фраза DISP-19 про строк (x) — ні: рушій її не підписує й
-    // перераховує, тож вона дала б хибне «Пункт змінився» (повторна рецензія коду).
-    var s = [it.w0, it.d0, it.hm, it.t0, it.res, it.why, it.f, it.no].join('\u0001'), a = 0x811c9dc5, b = 0x9747b28c;
+  function fnv(s) {                                   // = aw_fnv рушія (DISP-25: відбитки прийнятих зауважень, P.rh)
+    var a = 0x811c9dc5, b = 0x9747b28c;
     for (var i = 0; i < s.length; i++) {
       a = Math.imul(a ^ s.charCodeAt(i), 16777619) >>> 0;
       b = Math.imul(b ^ s.charCodeAt(i), 2246822519) >>> 0;
     }
     return ('0000000' + a.toString(16)).slice(-8) + ('0000000' + b.toString(16)).slice(-8);
+  }
+  function fp(it) {
+    // Відбиток пункту, яким його дав рушій: усе, що є в знімку пункту рушія (aw_snap) і видно на сторінці, — змінилось
+    // хоч щось (кому, строк, час, текст, результат, навіщо, «терміново», посилання, номер) — позначка з
+    // чернетки не переноситься (рецензія безпеки DISP-22, В1). Фраза DISP-19 про строк (x) — ні: рушій її не підписує й
+    // перераховує, тож вона дала б хибне «Пункт змінився» (повторна рецензія коду).
+    return fnv([it.w0, it.d0, it.hm, it.t0, it.res, it.why, it.f, it.no].join('\u0001'));
   }
   function parseDraft(v) {
     if (typeof v !== 'string' || !v || v.length > 4096) return null;
@@ -907,12 +923,13 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     // зі старим текстом. Тому текст / зауваження, схожі на секрет, — лише позначка «s» без змісту (наступного разу —
     // «позначте ще раз»); задовге значення — чернетки пункту немає.
     var x = {a: Date.now(), f: fp(it), c: it.dec === 1 || it.dec === 0 ? it.dec : null}, any = x.c !== null;
+    if (it.v) x.v = it.v;                              // DISP-25: стан пункту в рушії, від якого вона позначала
     if (it.w !== it.w0) { x.w = it.w; x.d = it.d; any = true; }     // кому змінено — строк завжди разом (D208)
     if (it.d !== it.d0) { x.d = it.d; any = true; }
     if (it.t !== it.t0) { x.t = it.t; any = true; }
     if (it.z) { x.z = it.z; any = true; }
     if (!any) return null;
-    if (secretish(x.t) || secretish(x.z)) return JSON.stringify({a: x.a, f: x.f, s: 1});
+    if (secretish(x.t) || secretish(x.z)) return JSON.stringify(it.v ? {a: x.a, f: x.f, v: it.v, s: 1} : {a: x.a, f: x.f, s: 1});
     var v = JSON.stringify(x);
     return v.length <= 4096 ? v : null;                // межа значення сховища — 4096
   }
@@ -1012,19 +1029,14 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     plan();
   }
   function flushAll() { if (FT || DIRTY.length || rDirty) flush(); }
-  function dropKeys(s, all) {                         // ключі цього вікна (all — і всього показу) — геть
-    var keys = items.map(function (it) { return ikey(it.n); }).concat([RKEY]);
-    if (all) dkeys.forEach(function (k) { if (k.indexOf(DPRE) === 0 && keys.indexOf(k) < 0) keys.push(k); });
-    try { s.del(keys); } catch (e) {}
-  }
-  function dropDraft(all) {
-    // Перед sendData: рішення пішли — чернетку цього вікна (all — всього показу) прибрати; далі нічого не пишу. Сховище
-    // ще не відповіло — прибере, щойно відповість (tryStore), і нічого з цього вікна вже не запише (рецензія безпеки, Д3).
-    SENT = all ? 2 : 1;
+  function sealDraft() {
+    // Перед sendData (DISP-25): дописати в чернетку те, що ще чекало пачки, — і далі нічого не писати. НЕ прибирати: бот
+    // міг відмовити (вікно зі старої кнопки, змінений пункт) — тоді наступне відкриття поверне її позначки. Прибирає
+    // відкриття, коли рушій уже прийняв (opened: P.wn; restore: v пункту, P.rh). Сховище ще не відповіло — нічого.
+    flushAll();
+    SENT = 1;
     clearTimeout(FT);
     FT = null; DIRTY = []; rDirty = false;
-    if (DRAFT) dropKeys(DRAFT, all);
-    DRAFT = null;
   }
   function applyDraft(it, x) {
     if ('w' in x) it.w = typeof x.w === 'string' && (x.w === '' || team[x.w]) ? x.w : '';
@@ -1045,12 +1057,21 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     items.forEach(function (it) {
       var x = parseDraft(vals[ikey(it.n)]);
       if (!x || it.touched || !(x.a > old)) return;
+      // DISP-25: рушій уже застосував її рішення до пункту після цієї чернетки (правка без рішення, зауваження, ✓ без
+      // строку) — чернетку прийнято: прибираю мовчки (її правка тепер у самому пункті — це не «змінився»). Чернетка
+      // новіша за це вікно (вікно зі старої кнопки) — не відновлюю й не чіпаю (рецензія коду DISP-25, Д5).
+      if (cnt(x.v) < it.v) { DRAFT.del([ikey(it.n)]); return; }
+      if (cnt(x.v) > it.v) return;
       if (x.f !== fp(it)) { moved.push(it.n); DRAFT.del([ikey(it.n)]); return; }
       if (x.s === 1) { hid.push(it.n); DRAFT.del([ikey(it.n)]); return; }   // було схоже на секрет — змісту не зберігала
       applyDraft(it, x);
       if (it.dec === 1) y++; else if (it.dec === 0) n++; else e++;
     });
     var r = parseDraft(vals[RKEY]), gr = '';
+    if (r && typeof r.r === 'string' && RH.indexOf(fnv(r.r)) >= 0) {   // DISP-25: це зауваження рушій уже записав
+      DRAFT.del([RKEY]);
+      r = null;
+    }
     if (r && typeof r.r === 'string' && r.a > old && !rTouched && !$('gen').value.trim()) {
       gr = r.r.slice(0, 500);
       $('gen').value = gr;
@@ -1077,6 +1098,17 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     dkeys = keys.filter(function (k) { return typeof k === 'string' && OURS.test(k); });
     var mine = items.map(function (it) { return ikey(it.n); }).concat([RKEY]);
     var old = Date.now() - DDAYS * 864e5, other = dkeys.filter(function (k) { return mine.indexOf(k) < 0; });
+    // DISP-25: пункти цього показу, яких уже немає серед тих, що чекають (вирішені), — їхня чернетка більше не треба (і
+    // зауваження до вікна, де такий пункт був першим); лише номери до найбільшого в P.wn — вікно зі старої кнопки не знає
+    // пунктів, доданих пізніше. Покази з P.gx (закриті) — усі їхні ключі.
+    var top = WN ? Math.max.apply(null, WN.concat([0])) : 0;
+    var gone = other.filter(function (k) {
+      if (k.indexOf(DPRE) !== 0) return GX.indexOf(fnv(k.slice(DK.length, k.lastIndexOf('-'))).slice(0, 8)) >= 0;
+      var m = WN ? /^r?(\d{1,4})$/.exec(k.slice(DPRE.length)) : null;
+      return !!m && +m[1] <= top && WN.indexOf(+m[1]) < 0;
+    });
+    try { if (gone.length) DRAFT.del(gone); } catch (e) {}
+    other = other.filter(function (k) { return gone.indexOf(k) < 0; });
     try {
       if (DRAFT.at) {
         DRAFT.del(other.filter(function (k) { return !(DRAFT.at(k) > old); }));
@@ -1116,11 +1148,8 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
         if (over) return;
         over = true;
         if (!keys) return next();
-        if (SENT) {                                   // «Готово» вже натиснуто — лише прибрати чернетку цього вікна
-          dkeys = keys.filter(function (k) { return typeof k === 'string' && OURS.test(k); });
-          return dropKeys(s, SENT === 2);
-        }
-        DRAFT = s;
+        if (SENT) return;                             // «Готово» вже натиснуто до відповіді сховища — нічого не пишу й не
+        DRAFT = s;                                    // прибираю (DISP-25: прибере наступне відкриття, коли бот прийняв)
         opened(keys);
       });
     } catch (e) {
