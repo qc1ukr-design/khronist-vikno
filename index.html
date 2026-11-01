@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-VaE9DHFvFhBlbj/un3URlBVgg+zipqRD5sJprBXOH20='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-EzCJWmtuftO+tmDxdeto/CIKo5am/DfSyp+GM2aNDqM='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
@@ -996,8 +996,14 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     if (it.t !== it.t0) { x.t = it.t; any = true; }
     if (it.z) { x.z = it.z; any = true; }
     if (!any) return null;
-    if (secretish(x.t) || secretish(x.z)) return JSON.stringify(it.v ? {a: x.a, f: x.f, v: it.v, s: 1} : {a: x.a, f: x.f, s: 1});
+    if (SEALING) x.k = 1;                              // TD-5: надіслано з «Готово» — рушій, прийнявши, прибере мовчки
+    if (secretish(x.t) || secretish(x.z)) {
+      var sx = it.v ? {a: x.a, f: x.f, v: it.v, s: 1} : {a: x.a, f: x.f, s: 1};
+      if (SEALING) sx.k = 1;
+      return JSON.stringify(sx);
+    }
     var v = JSON.stringify(x);
+    if (v.length > 4096 && x.k) { delete x.k; v = JSON.stringify(x); }   // k не вартий втрати чернетки на межі
     return v.length <= 4096 ? v : null;                // межа значення сховища — 4096
   }
   function cloudStore(cs) {
@@ -1096,11 +1102,16 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     plan();
   }
   function flushAll() { if (FT || DIRTY.length || rDirty) flush(); }
+  var SEALING = 0;                                    // 1 — іде останній запис перед sendData (див. sealDraft)
   function sealDraft() {
     // Перед sendData (DISP-25): дописати в чернетку те, що ще чекало пачки, — і далі нічого не писати. НЕ прибирати: бот
     // міг відмовити (вікно зі старої кнопки, змінений пункт) — тоді наступне відкриття поверне її позначки. Прибирає
     // відкриття, коли рушій уже прийняв (opened: P.wn; restore: v пункту, P.rh). Сховище ще не відповіло — нічого.
-    flushAll();
+    // TD-5: усі збережені пункти дописую з позначкою k («надіслано»): лише така чернетка, коли пункт потім змінився, —
+    // «рушій прийняв моє» (мовчки); без k пункт змінило інше вікно чи її слова — restore про це скаже.
+    SEALING = 1;
+    items.forEach(function (it) { if (it.saved && DIRTY.indexOf(it) < 0) DIRTY.push(it); });
+    try { flushAll(); } finally { SEALING = 0; }
     SENT = 1;
     clearTimeout(FT);
     FT = null; DIRTY = []; rDirty = false;
@@ -1120,14 +1131,15 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     render(it);
   }
   function restore(vals) {
-    var y = 0, n = 0, e = 0, moved = [], hid = [], old = Date.now() - DDAYS * 864e5;
+    var y = 0, n = 0, e = 0, moved = [], lost = [], hid = [], old = Date.now() - DDAYS * 864e5;
     items.forEach(function (it) {
       var x = parseDraft(vals[ikey(it.n)]);
       if (!x || it.touched || !(x.a > old)) return;
       // DISP-25: рушій уже застосував її рішення до пункту після цієї чернетки (правка без рішення, зауваження, ✓ без
       // строку) — чернетку прийнято: прибираю мовчки (її правка тепер у самому пункті — це не «змінився»). Чернетка
       // новіша за це вікно (вікно зі старої кнопки) — не відновлюю й не чіпаю (рецензія коду DISP-25, Д5).
-      if (cnt(x.v) < it.v) { DRAFT.del([ikey(it.n)]); return; }
+      // TD-5: мовчки лише тоді, коли це її надіслане «Готово» (k). Інакше пункт змінило інше вікно чи її слова — кажу.
+      if (cnt(x.v) < it.v) { if (x.k !== 1) lost.push(it.n); DRAFT.del([ikey(it.n)]); return; }
       if (cnt(x.v) > it.v) return;
       if (x.f !== fp(it)) { moved.push(it.n); DRAFT.del([ikey(it.n)]); return; }
       if (x.s === 1) { hid.push(it.n); DRAFT.del([ikey(it.n)]); return; }   // було схоже на секрет — змісту не зберігала
@@ -1153,6 +1165,10 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
     if (moved.length) {
       line += (line ? ' ' : '') + (moved.length === 1 ? 'Пункт ' + moved[0] + ' змінився відтоді — позначте його ще раз.' :
         'Пункти ' + moved.join(', ') + ' змінились відтоді — позначте їх ще раз.');
+    }
+    if (lost.length) {                                 // TD-5 (текст погоджено Марго 31.10)
+      line += (line ? ' ' : '') + (lost.length === 1 ? 'Задачу ' + lost[0] + ' змінили, поки вікно було закрите, тому вашу позначку я зняла. Поставте її ще раз.' :
+        'Задачі ' + lost.join(', ') + ' змінили, поки вікно було закрите, тому ваші позначки я зняла. Поставте їх ще раз.');
     }
     if (hid.length) {
       line += (line ? ' ' : '') + (hid.length === 1 ? 'Пункт ' + hid[0] : 'Пункти ' + hid.join(', ')) + ' позначте ще раз: ' +
