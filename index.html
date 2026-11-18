@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-EzCJWmtuftO+tmDxdeto/CIKo5am/DfSyp+GM2aNDqM='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://telegram.org 'sha256-Dw+A8A0xh2soy8p8n5v0pHTYaJgkKS8JcIIHsBmWWyE='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Погодити задачі</title>
 <!-- TASK-DISP-18 (D206): вікно погодження задач для Марго (Telegram Mini App з нижньої кнопки бота «Хроніст»).
      Дані — лише у фрагменті адреси (#d=…): фрагмент не йде на хостинг. Назад — Telegram.WebApp.sendData (≤ 4096 байт),
@@ -377,7 +377,9 @@ h2 .hn{color:var(--tg-theme-hint-color,var(--f-hint));font-weight:400}
   // Т1 — рівно те, що отримає людина (t1_one рушія): шапка, «Що зробити», «Результат», «Навіщо», «Строк», «Терміново»,
   // рядок про кнопку-посилання, підвал. Тест рушія звіряє цей формат.
   var LINK_BUTTON = '(кнопка нижче)';
-  var T1_FOOT = 'Відповідайте сюди: «прийняла» або питання — текстом чи голосом.';
+  // DISP-33 (D513): «ft: 1» — рушій уже шле людям підпис «текстом» (staff_text_only); без нього — старий.
+  var T1_FOOT = P.ft === 1 ? 'Відповідайте сюди текстом — чи берете задачу або що незрозуміло.'
+    : 'Відповідайте сюди: «прийняла» або питання — текстом чи голосом.';
   function endDot(s) { s = (s || '').replace(/\s+$/, ''); return /[.!?…]$/.test(s) ? s : s + '.'; }
   function flat(s) { return (s || '').replace(/\s+/g, ' ').trim(); }
   function taskText(it) {
